@@ -31,11 +31,11 @@ class EgoTrajectoryTargetBuilder(AbstractTargetBuilder):
         """Inherited, see superclass."""
         return Trajectory  # type: ignore
 
-    def get_targets(self, scenario: AbstractScenario) -> Trajectory:
+    def get_targets(self, scenario: AbstractScenario, iteration: int) -> Trajectory:
         """Inherited, see superclass."""
-        current_absolute_state = scenario.initial_ego_state
+        current_absolute_state = scenario.get_ego_state_at_iteration(iteration)
         trajectory_absolute_states = scenario.get_ego_future_trajectory(
-            iteration=0, num_samples=self._num_future_poses, time_horizon=self._time_horizon
+            iteration=iteration, num_samples=self._num_future_poses, time_horizon=self._time_horizon
         )
 
         # Get all future poses relative to the ego coordinate system

@@ -1,0 +1,5 @@
+_target_: nuplan.planning.training.modeling.closed_loop_utilities.perfect_tracking_ego_controller2.PerfectTrackingEgoController
+_convert_: 'all'
+
+step_time: 0.5
+future_horizon: 8.0

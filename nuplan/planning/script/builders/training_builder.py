@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 import pytorch_lightning.loggers
 import pytorch_lightning.plugins
 import torch
+from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
 from nuplan.planning.script.builders.data_augmentation_builder import build_agent_augmentor
@@ -16,7 +17,7 @@ from nuplan.planning.script.builders.training_callback_builder import build_call
 from nuplan.planning.script.builders.training_metrics_builder import build_training_metrics
 from nuplan.planning.script.builders.utils.utils_checkpoint import extract_last_checkpoint_from_experiment
 from nuplan.planning.training.data_loader.datamodule import DataModule
-from nuplan.planning.training.modeling.lightning_module_wrapper import LightningModuleWrapper
+from nuplan.planning.training.modeling.lightning_module_wrapper_v2 import LightningModuleWrapperV2
 from nuplan.planning.training.modeling.torch_module_wrapper import TorchModuleWrapper
 from nuplan.planning.training.preprocessing.feature_preprocessor import FeaturePreprocessor
 from nuplan.planning.utils.multithreading.worker_pool import WorkerPool
@@ -64,6 +65,7 @@ def build_lightning_datamodule(
         augmentors=augmentors,
         worker=worker,
         scenario_type_sampling_weights=cfg.scenario_type_weights.scenario_type_sampling_weights,
+        is_closed_loop='ego_controller' in cfg,
         **cfg.data_loader.datamodule,
     )
 
@@ -83,8 +85,13 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     # Build metrics to evaluate the performance of predictions
     metrics = build_training_metrics(cfg)
 
+    # Build controller if closed-loop
+    if "ego_controller" in cfg:
+        ego_controller = instantiate(cfg.ego_controller)
+    else:
+        ego_controller = None
     # Create the complete Module
-    model = LightningModuleWrapper(
+    model = LightningModuleWrapperV2(
         model=torch_module_wrapper,
         objectives=objectives,
         metrics=metrics,
@@ -93,6 +100,7 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
         lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
         warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
         objective_aggregate_mode=cfg.objective_aggregate_mode,
+        ego_controller=ego_controller,
     )
 
     return cast(pl.LightningModule, model)
@@ -131,20 +139,27 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
         return pl.Trainer(plugins=plugins, **params)
 
     if cfg.lightning.trainer.checkpoint.resume_training:
-        # Resume training from latest checkpoint
-        output_dir = Path(cfg.output_dir)
-        date_format = cfg.date_format
-
         OmegaConf.set_struct(cfg, False)
-        last_checkpoint = extract_last_checkpoint_from_experiment(output_dir, date_format)
-        if not last_checkpoint:
-            raise ValueError('Resume Training is enabled but no checkpoint was found!')
+        if isinstance(cfg.lightning.trainer.checkpoint.resume_training, bool):
+            # Resume training from latest checkpoint
+            output_dir = Path(cfg.output_dir)
+            date_format = cfg.date_format
 
-        params.resume_from_checkpoint = str(last_checkpoint)
-        latest_epoch = torch.load(last_checkpoint)['epoch']
-        params.max_epochs += latest_epoch
-        logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
+            last_checkpoint = extract_last_checkpoint_from_experiment(output_dir, date_format)
+            if not last_checkpoint:
+                raise ValueError('Resume Training is enabled but no checkpoint was found!')
 
+            params.resume_from_checkpoint = str(last_checkpoint)
+            latest_epoch = torch.load(last_checkpoint)['epoch']
+            params.max_epochs += latest_epoch
+            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
+
+        else:
+            # Resume training from designated checkpoint
+            params.resume_from_checkpoint = str(cfg.lightning.trainer.checkpoint.resume_training)
+            latest_epoch = torch.load(params.resume_from_checkpoint)['epoch']
+            params.max_epochs += latest_epoch
+            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {params.resume_from_checkpoint}')
         OmegaConf.set_struct(cfg, True)
 
     trainer = pl.Trainer(

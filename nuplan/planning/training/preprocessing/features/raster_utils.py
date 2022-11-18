@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from array import array
 from copy import deepcopy
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import cv2
 import numpy as np
@@ -10,7 +10,6 @@ import numpy.typing as npt
 from scipy.spatial.transform import Rotation as R
 
 from nuplan.common.actor_state.agent import Agent
-from nuplan.common.actor_state.agent_state import AgentState
 from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.oriented_box import OrientedBox
 from nuplan.common.actor_state.state_representation import Point2D, StateSE2
@@ -18,6 +17,7 @@ from nuplan.common.maps.abstract_map import AbstractMap, SemanticMapLayer
 from nuplan.common.maps.abstract_map_objects import PolygonMapObject, PolylineMapObject
 from nuplan.common.maps.maps_datatypes import TrafficLightStatusType
 from nuplan.planning.simulation.observation.observation_type import DetectionsTracks
+from nuplan.planning.training.preprocessing.feature_builders.vector_builder_utils import get_route_polygon_from_roadblock_ids
 
 # TODO: Move traffic light color configurations to hydra yaml files.
 # Color dict in the format of taffic_light_type: color tuple
@@ -27,6 +27,59 @@ BASELINE_TL_COLOR = {
     TrafficLightStatusType.GREEN: (0, 1, 0),
     TrafficLightStatusType.UNKNOWN: (0, 0, 1),  # Also the deafult color for baseline path
 }
+
+
+def get_route_raster(
+    agent: Agent,
+    route_roadblock_ids: List[str],
+    map_api: AbstractMap,
+    x_range: Tuple[float, float],
+    y_range: Tuple[float, float],
+    raster_shape: Tuple[int, int],
+    resolution: float,
+    feature_color: Optional[int] = 255
+) -> npt.NDArray[np.float32]:
+    """
+    Construct the route layer of the raster by converting roadblock ids to raster map.
+    :param ego_state: SE2 state of ego.
+    :param route_roadblock_ids: roadblock ids along with the route
+    :param map_api: map api.
+    :param x_range: [m] min and max range from the edges of the grid in x direction.
+    :param y_range: [m] min and max range from the edges of the grid in y direction.
+    :param raster_shape: shape of the target raster.
+    :param resolution: [m] pixel size in meters.
+    :param feature_color: feature value fill in road block polygon
+    :return roadmap_raster: the constructed map raster layer.
+    """
+    # Assume the raster has a square shape.
+    assert (x_range[1] - x_range[0]) == (
+        y_range[1] - y_range[0]
+    ), f'Raster shape is assumed to be square but got width: \
+            {y_range[1] - y_range[0]} and height: {x_range[1] - x_range[0]}'
+
+    radius = (x_range[1] - x_range[0]) / 2
+    route_raster: npt.NDArray[np.float32] = np.zeros(
+        raster_shape, dtype=np.float32)
+
+    global_transform = np.linalg.inv(agent.center.as_matrix())
+
+    # By default the map is right-oriented, this makes it top-oriented.
+    map_align_transform = R.from_euler(
+        'z', 90, degrees=True).as_matrix().astype(
+        np.float32)
+    transform = map_align_transform @ global_transform
+    block_polylines = get_route_polygon_from_roadblock_ids(
+        map_api, agent.center.point, radius, route_roadblock_ids).to_vector()
+    coords = [(transform @ _cartesian_to_projective_coords(
+        np.array(polylines)).T).T[:, :2] for polylines in block_polylines]
+    route_raster = _draw_polygon_image(
+        route_raster, coords, radius, resolution, feature_color)
+
+    # Flip the agents_raster along the horizontal axis.
+    route_raster = np.flip(route_raster, axis=0)
+    route_raster = np.ascontiguousarray(route_raster, dtype=np.float32)
+
+    return route_raster
 
 
 def _linestring_to_coords(geometry: List[PolylineMapObject]) -> List[Tuple[array[float]]]:
@@ -59,7 +112,7 @@ def _cartesian_to_projective_coords(coords: npt.NDArray[np.float64]) -> npt.NDAr
 
 
 def _get_layer_coords(
-    agent: AgentState,
+    agent: Agent,
     map_api: AbstractMap,
     map_layer_name: SemanticMapLayer,
     map_layer_geometry: str,
@@ -177,7 +230,7 @@ def _draw_linestring_image(
 
 
 def get_roadmap_raster(
-    focus_agent: AgentState,
+    focus_agent: Agent,
     map_api: AbstractMap,
     map_features: Dict[str, int],
     x_range: Tuple[float, float],
@@ -187,7 +240,7 @@ def get_roadmap_raster(
 ) -> npt.NDArray[np.float32]:
     """
     Construct the map layer of the raster by converting vector map to raster map.
-    :param focus_agent: agent state representing ego.
+    :param ego_state: SE2 state of ego.
     :param map_api: map api.
     :param map_features: name of map features to be drawn and its color for encoding.
     :param x_range: [m] min and max range from the edges of the grid in x direction.
@@ -284,9 +337,120 @@ def get_agents_raster(
 
     return agents_raster
 
+def get_past_current_agents_raster(
+    agents_raster: npt.NDArray[np.float32],
+    ego_state: EgoState,
+    detections: DetectionsTracks,
+    x_range: Tuple[float, float],
+    y_range: Tuple[float, float],
+    raster_shape: Tuple[int, int],
+    polygon_bit_shift: int = 9,
+    color_value: Optional[float] = 1.0
+):
+    """
+    Construct the history agents layer of the raster by transforming all detected boxes around the agent
+    and creating polygons of them in a raster grid.
+    :param ego_state: SE2 state of ego.
+    :param detections: list of 3D bounding box of detected agents.
+    :param x_range: [m] min and max range from the edges of the grid in x direction.
+    :param y_range: [m] min and max range from the edges of the grid in y direction.
+    :param raster_shape: shape of the target raster.
+    :param polygon_bit_shift: bit shift of the polygon used in opencv.
+    :return: constructed agents raster layer.
+    """
+    xmin, xmax = x_range
+    ymin, ymax = y_range
+    width, height = raster_shape
+
+    ego_to_global = ego_state.rear_axle.as_matrix()
+    global_to_ego = np.linalg.inv(ego_to_global)
+
+    north_aligned_transform = StateSE2(0, 0, np.pi / 2).as_matrix()
+
+    for tracked_object in detections.tracked_objects:
+        # Transform the box relative to agent.
+        raster_object_matrix = north_aligned_transform @ global_to_ego @ tracked_object.center.as_matrix()
+        raster_object_pose = StateSE2.from_matrix(raster_object_matrix)
+        # Filter out boxes outside the raster.
+        valid_x = x_range[0] < raster_object_pose.x < x_range[1]
+        valid_y = y_range[0] < raster_object_pose.y < y_range[1]
+        if not (valid_x and valid_y):
+            continue
+
+        # Get the 2D coordinate of the detected agents.
+        raster_oriented_box = OrientedBox(
+            raster_object_pose,
+            tracked_object.box.length,
+            tracked_object.box.width,
+            tracked_object.box.height)
+        box_bottom_corners = raster_oriented_box.all_corners()
+        x_corners = np.asarray(
+            [corner.x for corner in box_bottom_corners])  # type: ignore
+        y_corners = np.asarray(
+            [corner.y for corner in box_bottom_corners])  # type: ignore
+
+        # Discretize
+        y_corners = (y_corners - ymin) / (ymax - ymin) * height  # type: ignore
+        x_corners = (x_corners - xmin) / (xmax - xmin) * width  # type: ignore
+
+        box_2d_coords = np.stack(
+            [x_corners, y_corners], axis=1)  # type: ignore
+        box_2d_coords = np.expand_dims(box_2d_coords, axis=0)
+
+        # Draw the box as a filled polygon on the raster layer.
+        box_2d_coords = (box_2d_coords * 2**polygon_bit_shift).astype(np.int32)
+        cv2.fillPoly(
+            agents_raster,
+            box_2d_coords,
+            color=color_value,
+            shift=polygon_bit_shift,
+            lineType=cv2.LINE_AA)
+
+    return agents_raster
+
+def get_speed_raster(
+            past_trajectory: npt.NDArray[np.float32],
+            raster_shape: Tuple[float, float],
+        ) -> npt.NDArray[np.float32]:
+    """
+    Construct future target of ego vehicle on raster by drawing a pixel in the grid.
+    """
+    ego_raster: npt.NDArray[np.float32] = np.zeros(raster_shape, dtype=np.float32)
+    ego_raster[:, :] = np.hypot(past_trajectory[-1, 0], past_trajectory[-1, 1])
+
+    ego_raster = np.ascontiguousarray(ego_raster, dtype=np.float32)
+    return ego_raster
+
+def get_target_raster(
+            future_trajectory: npt.NDArray[np.float32],
+            x_range: Tuple[float, float],
+            y_range: Tuple[float, float],
+            raster_shape: Tuple[float, float],
+        ) -> npt.NDArray[np.float32]:
+    """
+    Construct future target of ego vehicle on raster by drawing a pixel in the grid.
+    """
+    ego_raster: npt.NDArray[np.float32] = np.zeros(raster_shape, dtype=np.float32)
+
+    xmin, xmax = x_range
+    ymin, ymax = y_range
+    width, height = raster_shape
+
+    # Discretize
+    target_y = (future_trajectory[-1, 0] - ymin) / (ymax - ymin) * height  # type: ignore
+    target_x = (future_trajectory[-1, 1] - xmin) / (xmax - xmin) * width  # type: ignore
+
+    target_x = int(np.clip(target_x, 0, height - 1))
+    target_y = int(np.clip(target_y, 0, width - 1))
+    # print(target_x, target_y, future_trajectory[-1], future_trajectory[0])
+    cv2.circle(ego_raster, (target_x, target_y), radius=0, color=255, thickness=-1)
+    ego_raster = np.flip(ego_raster, axis=0)
+    ego_raster = np.flip(ego_raster, axis=1)
+    ego_raster = np.ascontiguousarray(ego_raster, dtype=np.float32)
+    return ego_raster
 
 def get_focus_agent_raster(
-    agent: AgentState,
+    agent: Agent,
     raster_shape: Tuple[int, int],
     ego_longitudinal_offset: float,
     target_pixel_size: float,
@@ -314,7 +478,7 @@ def get_focus_agent_raster(
 
 
 def get_non_focus_agents_raster(
-    focus_agent: AgentState,
+    focus_agent: Agent,
     other_agents: List[Agent],
     x_range: Tuple[float, float],
     y_range: Tuple[float, float],
@@ -407,7 +571,7 @@ def get_ego_raster(
 
 
 def get_baseline_paths_raster(
-    focus_agent: AgentState,
+    focus_agent: Agent,
     map_api: AbstractMap,
     x_range: Tuple[float, float],
     y_range: Tuple[float, float],
@@ -462,7 +626,7 @@ def get_baseline_paths_raster(
 
 
 def get_baseline_paths_agents_raster(
-    focus_agent: AgentState,
+    focus_agent: Agent,
     map_api: AbstractMap,
     x_range: Tuple[float, float],
     y_range: Tuple[float, float],
@@ -474,7 +638,7 @@ def get_baseline_paths_agents_raster(
     """
     Construct the baseline paths layer by converting vector map to raster map.
     This function is for agents raster model, it has 3 channels for baseline path.
-    :param focus_agent: agent state representing ego.
+    :param ego_state: SE2 state of ego.
     :param map_api: map api
     :param x_range: [m] min and max range from the edges of the grid in x direction.
     :param y_range: [m] min and max range from the edges of the grid in y direction.
@@ -529,3 +693,50 @@ def get_baseline_paths_agents_raster(
     baseline_paths_raster = np.flip(baseline_paths_raster, axis=0)
     baseline_paths_raster = np.ascontiguousarray(baseline_paths_raster, dtype=np.float32)
     return baseline_paths_raster
+
+def get_augmented_ego_raster(
+    raster_shape: Tuple[int, int],
+    ego_longitudinal_offset: float,
+    ego_width_pixels: float,
+    ego_front_length_pixels: float,
+    ego_rear_length_pixels: float,
+    yaw: float,
+    offset: Tuple[float, float],
+    polygon_bit_shift: int = 9,
+) -> npt.NDArray[np.float32]:
+    """
+    Construct the ego layer of the raster by drawing a polygon of the ego's extent in the middle of the grid.
+    :param raster_shape: shape of the target raster.
+    :param ego_longitudinal_offset: [%] offset percentage to place the ego vehicle in the raster.
+    :param ego_width_pixels: width of the ego vehicle in pixels.
+    :param ego_front_length_pixels: distance between the rear axle and the front bumper in pixels.
+    :param ego_rear_length_pixels: distance between the rear axle and the rear bumper in pixels.
+    :param 
+    :return: constructed ego raster layer.
+    """
+    ego_raster: npt.NDArray[np.float32] = np.zeros(raster_shape, dtype=np.float32)
+
+    # Construct a rectangle representing the ego vehicle in the center of the raster.
+    map_x_center = int(raster_shape[1] * 0.5)
+    map_y_center = int(raster_shape[0] * (0.5 + ego_longitudinal_offset))
+    ego_top_left = [- ego_width_pixels // 2, - ego_front_length_pixels, 1]
+    ego_bottom_left = [ego_width_pixels // 2, - ego_front_length_pixels, 1]
+    ego_bottom_right = [ego_width_pixels // 2, + ego_rear_length_pixels, 1]
+    ego_top_right = [- ego_width_pixels // 2, + ego_rear_length_pixels, 1]
+    corners = np.array([ego_top_left, ego_bottom_left, ego_bottom_right, ego_top_right])
+    # Rotate matrix
+    rot_matrix = np.array(
+        [[  np.cos(yaw),  np.sin(yaw), offset[0] + map_x_center],
+         [- np.sin(yaw),  np.cos(yaw), offset[1] + map_y_center],
+         [          0,             0,         1]]
+    )
+    corners = np.dot(rot_matrix, corners.T).T
+
+    box_2d_coords = np.expand_dims(corners[:, :2], axis=0)
+
+    # Draw the box as a filled polygon on the raster layer.
+    box_2d_coords = (box_2d_coords * 2**polygon_bit_shift).astype(np.int32)
+    cv2.fillPoly(ego_raster, box_2d_coords, color=1.0, shift=polygon_bit_shift, lineType=cv2.LINE_AA)
+    ego_raster = np.asarray(ego_raster)
+    ego_raster = np.ascontiguousarray(ego_raster, dtype=np.float32)
+    return ego_raster

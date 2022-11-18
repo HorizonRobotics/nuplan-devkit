@@ -2,7 +2,7 @@ _target_: nuplan.planning.training.modeling.models.raster_model.RasterModel
 _convert_: 'all'
 model_name: resnet50  # model name to load from TIMM (e.g. tf_mobilenetv3_small_minimal_100, efficientnet_b3)
 pretrained: true  # whether to use pretrained weights
-num_input_channels: 4  # number of input channel of the raster model
+num_input_channels: 6  # number of input channel of the raster model
 
 # Dimension on a state in a trajectory
 num_features_per_pose: 3

@@ -76,7 +76,7 @@ class FeaturePreprocessor:
         return [builder.get_feature_type() for builder in self._target_builders]
 
     def compute_features(
-        self, scenario: AbstractScenario
+        self, scenario: AbstractScenario, iteration: int=0
     ) -> Tuple[FeaturesType, TargetsType, List[CacheMetadataEntry]]:
         """
         Compute features for a scenario, in case cache_path is set, features will be stored in cache,
@@ -90,8 +90,8 @@ class FeaturePreprocessor:
             all_targets: TargetsType
             all_targets_cache_metadata: List[CacheMetadataEntry]
 
-            all_features, all_feature_cache_metadata = self._compute_all_features(scenario, self._feature_builders)
-            all_targets, all_targets_cache_metadata = self._compute_all_features(scenario, self._target_builders)
+            all_features, all_feature_cache_metadata = self._compute_all_features(scenario, self._feature_builders, iteration)
+            all_targets, all_targets_cache_metadata = self._compute_all_features(scenario, self._target_builders, iteration)
 
             all_cache_metadata = all_feature_cache_metadata + all_targets_cache_metadata
             return all_features, all_targets, all_cache_metadata
@@ -106,7 +106,7 @@ class FeaturePreprocessor:
             raise RuntimeError(msg)
 
     def _compute_all_features(
-        self, scenario: AbstractScenario, builders: List[Union[AbstractFeatureBuilder, AbstractTargetBuilder]]
+        self, scenario: AbstractScenario, builders: List[Union[AbstractFeatureBuilder, AbstractTargetBuilder]], iteration: int
     ) -> Tuple[Union[FeaturesType, TargetsType], List[Optional[CacheMetadataEntry]]]:
         """
         Compute all features/targets from builders for scenario
@@ -120,7 +120,7 @@ class FeaturePreprocessor:
 
         for builder in builders:
             feature, feature_metadata_entry = compute_or_load_feature(
-                scenario, self._cache_path, builder, self._storing_mechanism, self._force_feature_computation
+                scenario, self._cache_path, builder, self._storing_mechanism, self._force_feature_computation, iteration
             )
             all_features[builder.get_feature_unique_name()] = feature
             all_features_metadata_entries.append(feature_metadata_entry)
