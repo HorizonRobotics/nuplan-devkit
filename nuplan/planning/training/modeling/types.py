@@ -31,5 +31,10 @@ def move_features_type_to_device(batch: FeaturesType, device: torch.device) -> F
     """
     output = {}
     for key, value in batch.items():
-        output[key] = value.to_device(device)
+        if isinstance(value, (int, float)):
+            output[key] = value
+        elif isinstance(value, torch.Tensor):
+            output[key] = value.to(device)
+        else:
+            output[key] = value.to_device(device)
     return output

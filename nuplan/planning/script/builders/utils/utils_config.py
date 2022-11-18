@@ -38,7 +38,8 @@ def update_config_for_training(cfg: DictConfig) -> None:
         cfg.data_loader.params.num_workers = 0
 
     if cfg.gpu and torch.cuda.is_available():
-        cfg.lightning.trainer.params.gpus = -1
+        # cfg.lightning.trainer.params.gpus = -1
+        pass
     else:
         cfg.lightning.trainer.params.gpus = None
         cfg.lightning.trainer.params.accelerator = None
@@ -260,7 +261,10 @@ def get_num_gpus_used(cfg: DictConfig) -> int:
 
         if isinstance(num_gpus, str):
             raise RuntimeError('Error, please specify gpus as integer. Received string.')
-        trainer_num_gpus = cast(int, trainer_num_gpus)
+        elif OmegaConf.is_config(trainer_num_gpus):
+            trainer_num_gpus = len(OmegaConf.to_container(trainer_num_gpus))
+        else:
+            trainer_num_gpus = cast(int, trainer_num_gpus)
 
         if trainer_num_gpus == -1:  # if trainer gpus = -1, all gpus are used, so find all available devices
             logger.info(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Type
+from typing import Dict, List, Type
 
 import numpy as np
 import numpy.typing as npt
@@ -16,11 +16,18 @@ from nuplan.planning.training.preprocessing.feature_builders.abstract_feature_bu
 )
 from nuplan.planning.training.preprocessing.features.raster import Raster
 from nuplan.planning.training.preprocessing.features.raster_utils import (
-    get_agents_raster,
     get_baseline_paths_raster,
     get_ego_raster,
     get_roadmap_raster,
+    get_route_raster,
+    get_past_current_agents_raster,
+    get_speed_raster,
 )
+
+from nuplan.planning.simulation.trajectory.trajectory_sampling import TrajectorySampling
+from nuplan.planning.training.preprocessing.feature_builders.abstract_feature_builder import AbstractModelFeature
+from nuplan.planning.training.preprocessing.features.trajectory import Trajectory
+from nuplan.planning.training.preprocessing.features.trajectory_utils import convert_absolute_to_relative_poses
 
 
 class RasterFeatureBuilder(AbstractFeatureBuilder):
@@ -86,13 +93,27 @@ class RasterFeatureBuilder(AbstractFeatureBuilder):
         """Inherited, see superclass."""
         return Raster  # type: ignore
 
-    def get_features_from_scenario(self, scenario: AbstractScenario) -> Raster:
+    def get_features_from_scenario(self, scenario: AbstractScenario, iteration: int) -> Raster:
         """Inherited, see superclass."""
-        ego_state = scenario.initial_ego_state
-        detections = scenario.initial_tracked_objects
+
+        ego_state = scenario.get_ego_state_at_iteration(iteration)
+
+        detections = scenario.get_tracked_objects_at_iteration(iteration)
+
         map_api = scenario.map_api
 
-        return self._compute_feature(ego_state, detections, map_api)
+        route_roadblock_ids = scenario.get_route_roadblock_ids()
+
+        past_ego_states = list(scenario.get_ego_past_trajectory(
+            iteration=iteration, time_horizon=2, num_samples=4)) # 2 second, 4 step, 0.5s interval
+        past_detections = list(scenario.get_past_tracked_objects(
+            iteration=iteration, time_horizon=2, num_samples=4))
+        trajectory_past_relative_poses = convert_absolute_to_relative_poses(
+            ego_state.rear_axle, [state.rear_axle for state in past_ego_states]
+        )
+        result = self._compute_feature(ego_state, detections, map_api, route_roadblock_ids, trajectory_past_relative_poses, past_detections)
+
+        return result
 
     def get_features_from_simulation(
         self, current_input: PlannerInput, initialization: PlannerInitialization
@@ -101,9 +122,15 @@ class RasterFeatureBuilder(AbstractFeatureBuilder):
         history = current_input.history
         ego_state = history.ego_states[-1]
         observation = history.observations[-1]
+        route_roadblock_ids = initialization.route_roadblock_ids
+        past_trajectory = convert_absolute_to_relative_poses(
+            ego_state.rear_axle, [state.rear_axle for state in history.ego_states[-11:-10]]
+        )
+        past_detection = history.observations[::-10][::-1][:-1]
+        feature = self._compute_feature(ego_state, observation, initialization.map_api, route_roadblock_ids, past_trajectory, past_detection)
 
         if isinstance(observation, DetectionsTracks):
-            return self._compute_feature(ego_state, observation, initialization.map_api)
+            return feature
         else:
             raise TypeError(f"Observation was type {observation.detection_type()}. Expected DetectionsTracks")
 
@@ -112,8 +139,16 @@ class RasterFeatureBuilder(AbstractFeatureBuilder):
         ego_state: EgoState,
         detections: DetectionsTracks,
         map_api: AbstractMap,
+        route_roadblock_ids: List[str],
+        past_ego_trajectory,
+        past_detections: List[DetectionsTracks],
     ) -> Raster:
+        # Add task A for 1s.
+        # profiler.start("roadmap")
         # Construct map, agents and ego layers
+        len_steps = len(past_detections) if past_detections is not None else 0
+        if len_steps == 0:
+            past_detections = []
         roadmap_raster = get_roadmap_raster(
             ego_state.agent,
             map_api,
@@ -124,14 +159,25 @@ class RasterFeatureBuilder(AbstractFeatureBuilder):
             self.target_pixel_size,
         )
 
-        agents_raster = get_agents_raster(
-            ego_state,
-            detections,
-            self.x_range,
-            self.y_range,
-            self.raster_shape,
-        )
+        agents_raster = np.zeros(self.raster_shape, dtype=np.float32)
 
+        # Agent historical data
+        for past_step, past_detections in enumerate(
+                past_detections + [detections], start=1):
+            agents_raster = get_past_current_agents_raster(
+                agents_raster,
+                ego_state,
+                past_detections,
+                self.x_range,
+                self.y_range,
+                self.raster_shape,
+                color_value=past_step / (len_steps + 1),
+            )
+        agents_raster = np.asarray(agents_raster)
+        agents_raster = np.flip(agents_raster, axis=0)
+        agents_raster = np.ascontiguousarray(agents_raster, dtype=np.float32)
+
+        # ego_raster current
         ego_raster = get_ego_raster(
             self.raster_shape,
             self.ego_longitudinal_offset,
@@ -150,12 +196,30 @@ class RasterFeatureBuilder(AbstractFeatureBuilder):
             self.baseline_path_thickness,
         )
 
+        route_raster = get_route_raster(
+            ego_state.agent,
+            route_roadblock_ids,
+            map_api,
+            self.x_range,
+            self.y_range,
+            self.raster_shape,
+            self.target_pixel_size,
+        )
+        route_raster /= 255.0
+        ego_speed_raster = get_speed_raster(
+            past_ego_trajectory,
+            self.raster_shape,
+        )
+        # hardcode
+        ego_speed_raster /= 8.0
         collated_layers: npt.NDArray[np.float32] = np.dstack(
             [
                 ego_raster,
                 agents_raster,
                 roadmap_raster,
                 baseline_paths_raster,
+                route_raster,
+                ego_speed_raster,
             ]
         ).astype(np.float32)
 
@@ -167,4 +231,5 @@ class RasterFeatureBuilder(AbstractFeatureBuilder):
                 f'Shape is {collated_layers.shape}'
             )
 
-        return Raster(data=collated_layers)
+        result = Raster(data=collated_layers)
+        return result

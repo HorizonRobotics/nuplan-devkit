@@ -46,3 +46,5 @@ tqdm  # Used widely
 typer # Used for cli
 ujson  # Used in serialiation_callback.py
 urllib3  # Used in s3_store.py
+kornia
+tabulate

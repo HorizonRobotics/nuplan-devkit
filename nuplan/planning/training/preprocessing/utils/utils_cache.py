@@ -24,6 +24,7 @@ def compute_or_load_feature(
     builder: Union[AbstractFeatureBuilder, AbstractTargetBuilder],
     storing_mechanism: FeatureCache,
     force_feature_computation: bool,
+    iteration: int=0,
 ) -> Tuple[AbstractModelFeature, Optional[CacheMetadataEntry]]:
     """
     Compute features if non existent in cache, otherwise load them from cache
@@ -38,7 +39,7 @@ def compute_or_load_feature(
 
     # Filename of the cached features/targets
     file_name = (
-        cache_path / scenario.log_name / scenario.scenario_type / scenario.token / builder.get_feature_unique_name()
+        cache_path / scenario.log_name / scenario.scenario_type / scenario._lidarpc_tokens[iteration] / builder.get_feature_unique_name()
         if cache_path_available
         else None
     )
@@ -66,9 +67,9 @@ def compute_or_load_feature(
                 )
             )
         if isinstance(builder, AbstractFeatureBuilder):
-            feature = builder.get_features_from_scenario(scenario)
+            feature = builder.get_features_from_scenario(scenario, iteration)
         elif isinstance(builder, AbstractTargetBuilder):
-            feature = builder.get_targets(scenario)
+            feature = builder.get_targets(scenario, iteration)
         else:
             raise ValueError(f"Unknown builder type: {type(builder)}")
 
