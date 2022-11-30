@@ -104,6 +104,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
         self._trajectory_smoother = None
         self._last_step_prediction = None # Last step's prediction
         self._token2state: Dict[str, AbstractTrainingController] = None # State memory for every scenario
+        self._updated_flag = False
         self._setup_closed_loop_if_necessary()
 
         # Validate metrics objectives and model
@@ -124,6 +125,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
                 self._step_interval
             )
             self._token2state = {}
+            self._updated_flag = False
 
     def update_controllers(self, batch: Tuple[FeaturesType, TargetsType]) -> None:
         """Update closed loop controllers"""
@@ -146,6 +148,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
                     f"{iteration.item()}, recorded iter is "
                     f"{self._token2state[token].current_iteration.item()}")
                 self._token2state[token].update(ego_state.time_point)
+        self._updated_flag = True
 
 
     def _step(self, batch: Tuple[FeaturesType, TargetsType], prefix: str, batch_idx: int) -> Dict[str, Any]:
@@ -166,6 +169,9 @@ class LightningModuleWrapperV2(pl.LightningModule):
             gt_ego_states = [i.get_ego_state_at_iteration(j.item()) for i, j in zip(scenarios, current_iterations)]
             scenario_tokens = [i.token for i in scenarios]
             N = len(scenario_tokens)
+
+            if not self._updated_flag:
+                self.update_controllers(batch)
             
             # Add unseen scenario, or update a seen scenario
             for token, iteration, ego_state in zip(scenario_tokens, current_iterations, gt_ego_states):
@@ -257,6 +263,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
             "trajectory": predictions["trajectory"],
         }
         return_dict.update(additional_logged_objects)
+        self._updated_flag = False
         return return_dict
 
     def _compute_objectives(
