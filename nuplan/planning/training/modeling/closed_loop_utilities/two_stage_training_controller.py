@@ -84,3 +84,4 @@ class TwoStageTrainingController(AbstractTrainingController):
             sampling_time=sampling_time,
         )
         self.current_iteration = self.current_iteration + 1
+        self.num_iter_without_reset = self.num_iter_without_reset + 1
