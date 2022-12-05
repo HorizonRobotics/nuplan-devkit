@@ -217,7 +217,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
                         num_corrections += 1
                         reset_sample_index.append(i)
                 else:
-                    reason = f"Sample {i} in batch {batch_idx} reset at iter {current_iterations[i].item()}."
+                    reason = f"{self.global_rank}: Sample {i} in batch {batch_idx} reset at iter {current_iterations[i].item()}."
                     if not dist_bound[i]: 
                         reason = reason + f" Dist. off by {dist[i].item():.4f}m."
                     if not rot_bound[i]:
