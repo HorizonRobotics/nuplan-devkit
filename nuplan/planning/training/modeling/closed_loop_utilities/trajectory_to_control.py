@@ -403,34 +403,34 @@ class TrajectoryToControl:
 
     def initialize(self, **kwargs):
         assert 'device' in kwargs
-        device = kwargs['device']
+        self._device = kwargs['device']
         state_cost_diagonal_entries = self._solver_params.state_cost_diagonal_entries
         assert (
             len(state_cost_diagonal_entries) == self._n_states
         ), f"State cost matrix should have diagonal length {self._n_states}."
         state_cost_diagonal_entries = torch.tensor(state_cost_diagonal_entries)
-        self._state_cost_matrix = torch.diag(state_cost_diagonal_entries).to(device)
+        self._state_cost_matrix = torch.diag(state_cost_diagonal_entries).to(self._device)
 
         input_cost_diagonal_entries = self._solver_params.input_cost_diagonal_entries
         assert (
             len(input_cost_diagonal_entries) == self._n_inputs
         ), f"Input cost matrix should have diagonal length {self._n_inputs}."
         input_cost_diagonal_entries = torch.tensor(input_cost_diagonal_entries)
-        self._input_cost_matrix = torch.diag(input_cost_diagonal_entries).to(device)
+        self._input_cost_matrix = torch.diag(input_cost_diagonal_entries).to(self._device)
 
         state_trust_region_entries = self._solver_params.state_trust_region_entries
         assert (
             len(state_trust_region_entries) == self._n_states
         ), f"State trust region cost matrix should have diagonal length {self._n_states}."
         state_trust_region_entries = torch.tensor(state_trust_region_entries)
-        self._state_trust_region_cost_matrix = torch.diag(state_trust_region_entries).to(device)
+        self._state_trust_region_cost_matrix = torch.diag(state_trust_region_entries).to(self._device)
 
         input_trust_region_entries = self._solver_params.input_trust_region_entries
         assert (
             len(input_trust_region_entries) == self._n_inputs
         ), f"Input trust region cost matrix should have diagonal length {self._n_inputs}."
         input_trust_region_entries = torch.tensor(input_trust_region_entries)
-        self._input_trust_region_cost_matrix = torch.diag(input_trust_region_entries).to(device)
+        self._input_trust_region_cost_matrix = torch.diag(input_trust_region_entries).to(self._device)
 
     def solve(self, current_state, reference_trajectory):
         """
@@ -612,18 +612,17 @@ class TrajectoryToControl:
 
         # Now we construct and populate the state and input Jacobians.
         num_batch = current_input.shape[0]
-        device = current_input.device
-        state_jacobian = torch.zeros([num_batch, self._n_states, self._n_states], device=device, dtype=torch.float64)
+        state_jacobian = torch.zeros([num_batch, self._n_states, self._n_states], device=self._device, dtype=torch.float64)
         idx = torch.arange(self._n_states)
         state_jacobian[:, idx, idx] = 1
-        input_jacobian = torch.zeros([num_batch, self._n_states, self._n_inputs], device=device, dtype=torch.float64)
+        input_jacobian = torch.zeros([num_batch, self._n_states, self._n_inputs], device=self._device, dtype=torch.float64)
 
         # Set a nonzero velocity to handle issues when linearizing at (near) zero velocity.
         # This helps e.g. when the vehicle is stopped with zero steering angle and needs to accelerate/turn.
         # Without this, the A matrix will indicate steering has no impact on heading due to Euler discretization.
         # There will be a rank drop in the controllability matrix, so the discrete-time algebraic Riccati equation
         # may not have a solution (uncontrollable subspace) or it may not be unique.
-        min_velocity_linearization = torch.tensor(self._solver_params.min_velocity_linearization, dtype=torch.float64, device=current_state.device)
+        min_velocity_linearization = torch.tensor(self._solver_params.min_velocity_linearization, dtype=torch.float64, device=self._device)
         velocity = torch.where(
             torch.lt(torch.abs(velocity), min_velocity_linearization) & torch.gt(velocity, 0), min_velocity_linearization, velocity
         )
@@ -659,16 +658,15 @@ class TrajectoryToControl:
         :return: A feasible iterate after applying dynamics with state/input trajectories and Jacobian matrices.
         """
         num_batch, N = control_variables.shape[0], control_variables.shape[1]
-        device = control_variables.device
         state_trajectory = torch.tensor(float("nan")) * torch.ones(
-            (num_batch, N + 1, self._n_states), dtype=torch.float64, device=device)
+            (num_batch, N + 1, self._n_states), dtype=torch.float64, device=self._device)
         final_input_trajectory = torch.tensor(float("nan")) * torch.ones_like(
-            control_variables, dtype=torch.float64, device=device)
+            control_variables, dtype=torch.float64, device=self._device)
 
         state_jacobian_trajectory = torch.tensor(float("nan")) * torch.ones(
-            (num_batch, N, self._n_states, self._n_states), dtype=torch.float64, device=device)
+            (num_batch, N, self._n_states, self._n_states), dtype=torch.float64, device=self._device)
         final_input_jacobian_trajectory = torch.tensor(float("nan")) * torch.ones(
-            (num_batch, N, self._n_states, self._n_inputs), dtype=torch.float64, device=device)
+            (num_batch, N, self._n_states, self._n_inputs), dtype=torch.float64, device=self._device)
 
         state_trajectory[:, 0, :] = current_state
 
@@ -706,9 +704,6 @@ class TrajectoryToControl:
         """
         input_trajectory = iterate['input_trajectory']
         state_trajectory = iterate['state_trajectory']
-        device = input_trajectory.device
-        _input_cost_matrix = self._input_cost_matrix.to(device)
-        _state_cost_matrix = self._state_cost_matrix.to(device)
 
         # assert state_trajectory.shape[1] == reference_trajectory.shape[1], "The state and reference trajectory should have the same length."
 
@@ -719,19 +714,19 @@ class TrajectoryToControl:
         input_cost = []
         for idx in range(input_trajectory.shape[1]):
             u = input_trajectory[:, idx]
-            input_cost_idx = einsum(u, _input_cost_matrix, 'b i, i i -> b i')
+            input_cost_idx = einsum(u, self._input_cost_matrix, 'b i, i i -> b i')
             input_cost_idx = einsum(input_cost_idx, u, 'b i, b i -> b')
             input_cost.append(torch.mean(input_cost_idx))
 
         state_cost = []
         for idx in range(error_state_trajectory.shape[1]):
             e = error_state_trajectory[:, idx]
-            state_cost_idx = einsum(e, _state_cost_matrix, 'b s, s s -> b s')
+            state_cost_idx = einsum(e, self._state_cost_matrix, 'b s, s s -> b s')
             state_cost_idx = einsum(state_cost_idx, e, 'b s, b s -> b')
             state_cost.append(torch.mean(state_cost_idx))
 
-        input_cost = torch.tensor(input_cost, device=device, dtype=torch.float64)
-        state_cost = torch.tensor(state_cost, device=device, dtype=torch.float64)
+        input_cost = torch.tensor(input_cost, device=self._device, dtype=torch.float64)
+        state_cost = torch.tensor(state_cost, device=self._device, dtype=torch.float64)
 
         cost = torch.sum(input_cost) + torch.sum(state_cost)
         return float(cost)
@@ -744,9 +739,8 @@ class TrajectoryToControl:
         :return: Clipped version of the control inputs, unmodified if already within constraints.
         """
         assert inputs.shape[1] == 2, f"The inputs should be a 2D vector with 2 elements."
-        device = inputs.device
-        _input_clip_min = torch.tensor(self._input_clip_min, device=device)
-        _input_clip_max = torch.tensor(self._input_clip_max, device=device)
+        _input_clip_min = torch.tensor(self._input_clip_min, device=self._device)
+        _input_clip_max = torch.tensor(self._input_clip_max, device=self._device)
 
         return torch.clamp(inputs, _input_clip_min, _input_clip_max)  # type: ignore
 
@@ -757,7 +751,7 @@ class TrajectoryToControl:
         :param steering_angle: [rad] A steering angle (scalar) to clip.
         :return: [rad] The clipped steering angle.
         """
-        _steering_angle = torch.minimum(torch.abs(steering_angle), torch.tensor(self._solver_params.max_steering_angle, device=steering_angle.device))
+        _steering_angle = torch.minimum(torch.abs(steering_angle), torch.tensor(self._solver_params.max_steering_angle, device=self._device))
         steering_angle = torch.where(steering_angle >= 0, _steering_angle, -_steering_angle)
         return steering_angle
 
@@ -778,12 +772,11 @@ class TrajectoryToControl:
         input_trajectory = current_iterate['input_trajectory']
         state_jacobian_trajectory = current_iterate['state_jacobian_trajectory']
         input_jacobian_trajectory = current_iterate['input_jacobian_trajectory']
-        device = state_trajectory.device
 
-        input_cost_matrix = self._input_cost_matrix.unsqueeze(0).double().to(device)
-        input_trust_region_cost_matrix = self._input_trust_region_cost_matrix.unsqueeze(0).double().to(device)
-        state_cost_matrix = self._state_cost_matrix.unsqueeze(0).double().to(device)
-        state_trust_region_cost_matrix = self._state_trust_region_cost_matrix.unsqueeze(0).double().to(device)
+        input_cost_matrix = self._input_cost_matrix.unsqueeze(0).double()
+        input_trust_region_cost_matrix = self._input_trust_region_cost_matrix.unsqueeze(0).double()
+        state_cost_matrix = self._state_cost_matrix.unsqueeze(0).double()
+        state_trust_region_cost_matrix = self._state_trust_region_cost_matrix.unsqueeze(0).double()
 
         # Check reference matches the expected shape.
         # assert reference_trajectory.shape[1] == state_trajectory.shape[1] - 1, "The reference trajectory has incorrect shape."
@@ -806,10 +799,9 @@ class TrajectoryToControl:
 
         # The optimal LQR policy has the form \Delta u_k^* = K_k \Delta z_k + \kappa_k
         # We refer to K_k as state_feedback_matrix and \kappa_k as feedforward input in the code below.
-        device = input_trajectory.device
         num_batch, N = input_trajectory.shape[0], input_trajectory.shape[1]
-        state_feedback_matrices = float("nan") * torch.ones((num_batch, N, self._n_inputs, self._n_states), dtype=torch.float64, device=device)
-        feedforward_inputs = float("nan") * torch.ones((num_batch, N, self._n_inputs), dtype=torch.float64, device=device)
+        state_feedback_matrices = float("nan") * torch.ones((num_batch, N, self._n_inputs, self._n_states), dtype=torch.float64, device=self._device)
+        feedforward_inputs = float("nan") * torch.ones((num_batch, N, self._n_inputs), dtype=torch.float64, device=self._device)
 
         for i in reversed(range(N)):
             A = state_jacobian_trajectory[:, i]
@@ -936,15 +928,14 @@ class TrajectoryToControl:
 
         # Trajectory of state perturbations while applying feedback policy.
         # Starts with zero as the initial states match exactly, only later states might vary.
-        device=state_trajectory.device
         num_batch, N = input_trajectory.shape[0], input_trajectory.shape[1]
         delta_state_trajectory = torch.tensor(float('nan')) * torch.ones((
-            num_batch, N + 1, self._n_states), dtype=torch.float64, device=device)
-        delta_state_trajectory[:, 0] = torch.zeros((num_batch, self._n_states), dtype=torch.float64, device=device)
+            num_batch, N + 1, self._n_states), dtype=torch.float64, device=self._device)
+        delta_state_trajectory[:, 0] = torch.zeros((num_batch, self._n_states), dtype=torch.float64, device=self._device)
 
         # This is the updated input trajectory we will return after applying the input perturbations.
         input_next_trajectory = torch.tensor(float('nan')) * torch.ones_like(
-            input_trajectory, dtype=torch.float64, device=device)
+            input_trajectory, dtype=torch.float64, device=self._device)
 
         N = input_trajectory.shape[1]
 
@@ -983,89 +974,3 @@ class TrajectoryToControl:
         assert ~torch.any(torch.isnan(input_next_trajectory)), "All next inputs should be valid float values."
 
         return input_next_trajectory  # type: ignore
-
-
-# if __name__ == "__main__":
-#     import os
-#     from typing import List, Optional, Tuple
-#     import matplotlib.pyplot as plt
-#     from nuplan.planning.training.modeling.models.dipp_model_utils import bicycle_model
-   
-#     # trajectory = np.array(
-#     #     [
-#     #     [ 3.97342634e+00,  4.57113355e-01,  2.49877930e-01, -4.41701382e-01, 3.16224456e-01, 0.00000000e+00],
-#     #     [ 6.12674379e+00,  1.09291279e+00,  3.52767706e-01, -6.78752005e-01, 5.18683910e-01, 0.00000000e+00],
-#     #     [ 8.31951332e+00,  1.97754967e+00,  4.13567543e-01, -9.42090034e-01, 6.67023718e-01, 0.00000000e+00],
-#     #     [ 1.06296530e+01,  3.00840688e+00,  4.53505993e-01, -1.14782691e+00, 8.77748787e-01, 0.00000000e+00],
-#     #     [ 1.30230131e+01,  4.19286108e+00,  4.81674552e-01, -1.35801053e+00, 1.07304585e+00, 0.00000000e+00],
-#     #     [ 1.55141821e+01,  5.49916553e+00,  4.97916579e-01, -1.53675067e+00, 1.15515184e+00, 0.00000000e+00],
-#     #     [ 1.80201054e+01,  6.87377167e+00,  5.07725358e-01, -1.61046970e+00, 1.22380102e+00, 0.00000000e+00],
-#     #     [ 2.05358086e+01,  8.26056290e+00,  5.15743375e-01, -1.58012629e+00, 1.21270764e+00, 0.00000000e+00],
-#     #     [ 2.29929905e+01,  9.67429256e+00,  5.23426056e-01, -1.60910320e+00, 1.19602680e+00, 0.00000000e+00],
-#     #     [ 2.54551449e+01,  1.11441393e+01,  5.30618072e-01, -1.66888463e+00, 1.23821604e+00, 0.00000000e+00],
-#     #     [ 2.79612312e+01,  1.26187944e+01,  5.37579775e-01, -1.71041727e+00, 1.32284367e+00, 0.00000000e+00],
-#     #     [ 3.04966621e+01,  1.41300039e+01,  5.44248700e-01, -1.78164411e+00, 1.36873472e+00, 0.00000000e+00],
-#     #     [ 3.30126915e+01,  1.57168932e+01,  5.51712871e-01, -1.86613023e+00, 1.38294709e+00, 0.00000000e+00],
-#     #     [ 3.55922203e+01,  1.73329601e+01,  5.59343815e-01, -1.93044376e+00, 1.43336010e+00, 0.00000000e+00],
-#     #     [ 3.81669350e+01,  1.89929581e+01,  5.67086935e-01, -1.95554578e+00, 1.47655439e+00, 0.00000000e+00]
-#     #     ]
-#     # )
-#     # current_state = np.array([ 1.94742525e+00,  7.97679126e-02,  1.26114130e-01, -2.05141336e-01, 1.65898874e-01, 0.00000000e+00])
-#     trajectory = np.array(
-#         [
-#        [ 8.31951332,  1.97754967,  0.41356754,  4.38553906,  1.76927376, 0],
-#        [10.629653  ,  3.00840688,  0.45350599,  4.62027936,  2.06171442, 0],
-#        [13.0230131 ,  4.19286108,  0.48167455,  4.7867202 ,  2.3689084, 0],
-#        [15.5141821 ,  5.49916553,  0.49791658,  4.982338  ,  2.6126089, 0],
-#        [18.0201054 ,  6.87377167,  0.50772536,  5.0118466 ,  2.74921228, 0],
-#        [20.5358086 ,  8.2605629 ,  0.51574338,  5.0314064 ,  2.77358246, 0],
-#        [22.9929905 ,  9.67429256,  0.52342606,  4.9143638 ,  2.82745932, 0],
-#        [25.4551449 , 11.1441393 ,  0.53061807,  4.9243088 ,  2.93969348, 0],
-#        [27.9612312 , 12.6187944 ,  0.53757977,  5.0121726 ,  2.9493102, 0],
-#        [30.4966621 , 14.1300039 ,  0.5442487 ,  5.0708618 ,  3.022419, 0],
-#        [33.0126915 , 15.7168932 ,  0.55171287,  5.0320588 ,  3.1737786, 0],
-#        [35.5922203 , 17.3329601 ,  0.55934381,  5.1590576 ,  3.2321338, 0],
-#        [38.166935  , 18.9929581 ,  0.56708693,  5.1494294 ,  3.319996, 0]]
-#     )
-#     current_state = np.array([ 6.12674379,  1.09291279,  0.35276771,  4.3066349 ,  1.27159887, 0])
-#     reference_trajectory = torch.from_numpy(trajectory[:, [0, 1, 2, 3, 5]]).unsqueeze(0)
-
-#     # trajectory = np.array(
-#     #     [[-0.03731204569339752, 0.004816471133381128, 0.003940280992537737, -0.03731204569339752, 0.0], 
-#     #     [0.03790519759058952, -0.00036369310691952705, 0.00011010239541064948, 0.07521724700927734, 0.0], 
-#     #     [0.2529449760913849, -0.017347777262330055, 0.0031748400069773197, 0.21503977477550507, 0.0], 
-#     #     [0.6316768527030945, -0.0009725731797516346, -0.015544861555099487, 0.3787318766117096, 0.0], 
-#     #     [1.2965309619903564, -0.03487087041139603, -0.007693011779338121, 0.664854109287262, 0.0], 
-#     #     [2.239284038543701, -0.06497658789157867, 0.01251471508294344, 0.9427530765533447, 0.0], 
-#     #     [3.4401402473449707, -0.07947875559329987, -0.020760629326105118, 1.2008562088012695, 0.0], 
-#     #     [4.978677749633789, -0.05496630445122719, -0.004444814752787352, 1.5385375022888184, 0.0], 
-#     #     [6.971364498138428, -0.06363555043935776, -0.01083345152437687, 1.9926867485046387, 0.0], 
-#     #     [9.20110034942627, -0.05909844487905502, -0.015008657239377499, 2.229735851287842, 0.0], 
-#     #     [11.78757381439209, -0.04674834758043289, -0.008067848160862923, 2.5864734649658203, 0.0], 
-#     #     [14.590468406677246, 0.04275747761130333, -0.0036501858849078417, 2.8028945922851562, 0.0], 
-#     #     [17.695810317993164, 0.036063145846128464, -0.009776215068995953, 3.105341911315918, 0.0], 
-#     #     [20.77422523498535, 0.08901375532150269, 0.004881435539573431, 3.0784149169921875, 0.0], 
-#     #     [24.657615661621094, 0.15338543057441711, 0.01808736100792885, 3.883390426635742, 0.0], 
-#     #     [27.500917434692383, 0.2360120415687561, 0.02320694923400879, 2.843301773071289, 0.0]]
-#     # )
-#     # current_state = np.array([4.656612873077393e-10, 0.0, -3.3215873834839948e-18, 6.938893903907228e-18, 0, 0.0000000e+00],)
-#     # reference_trajectory = torch.from_numpy(trajectory).unsqueeze(0)
-#     print(f"reference_trajectory: {reference_trajectory.shape}")
-
-#     # v_0 = np.hypot(current_state[3], current_state[4]) 
-#     # dipp_current_state = current_state[:5]
-#     dipp_current_state = torch.from_numpy(current_state).unsqueeze(0)
-
-#     # control_variables = generate_control_from_trajectory(
-#     #     current_state, reference_trajectory, discretization_time)
-#     nuplan_current_state = np.array(list(current_state[:4]) + [current_state[-1]])
-#     nuplan_current_state = torch.from_numpy(nuplan_current_state).unsqueeze(0)
-#     print(f"nuplan current state: {nuplan_current_state.shape}")
-
-#     trajectory_to_control = TrajectoryToControl("cpu")
-#     solution_list = trajectory_to_control.solve(nuplan_current_state, reference_trajectory)
-
-#     for idx, solution_dict in enumerate(solution_list):
-#         tracking_cost=solution_dict['tracking_cost']
-#         print(f"idx: {idx}, tracking cost: {tracking_cost}")
-#         plot_control(dipp_current_state, nuplan_current_state, solution_dict, reference_trajectory, idx)
