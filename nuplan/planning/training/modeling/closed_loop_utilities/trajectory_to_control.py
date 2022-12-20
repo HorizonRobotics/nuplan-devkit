@@ -8,6 +8,8 @@ from einops import einsum
 
 from nuplan.common.actor_state.vehicle_parameters import \
     get_pacifica_parameters
+from nuplan.planning.simulation.controller.tracker.ilqr.ilqr_solver import (
+    ILQRSolverParameters, ILQRWarmStartParameters)
 from nuplan.planning.training.modeling.closed_loop_utilities.utils.torch_util import \
     principal_value
 
@@ -331,54 +333,13 @@ def complete_kinematic_state_and_inputs_from_poses(
     return kinematic_states, kinematic_inputs
 
 
-class ILQRSolverParameters:
-    """Parameters related to the solver implementation."""
-
-    discretization_time: float = 0.5  # [s] Time discretization used for integration.
-
-    # Cost weights for state [x, y, heading, velocity, steering angle] and input variables [acceleration, steering rate].
-    state_cost_diagonal_entries: List[float] = [1.0, 1.0, 10.0, 0.0, 0.0]
-    input_cost_diagonal_entries: List[float] = [1.0, 10.0]
-
-    # Trust region cost weights for state and input variables.  Helps keep linearization error per update step bounded.
-    state_trust_region_entries: List[float] = [1.0, 1.0, 1.0, 1.0, 1.0]
-    input_trust_region_entries: List[float] = [1.0, 1.0]
-
-    # Parameters related to solver runtime / solution sub-optimality.
-    max_ilqr_iterations: int = 10  # Maximum number of iterations to run iLQR before timeout.
-    convergence_threshold: float = 1e-6  # Threshold for delta inputs below which we can terminate iLQR early.
-    max_solve_time: Optional[
-        float
-    ] = 10.0 # [s] If defined, sets a maximum time to run a solve call of iLQR before terminating.
-
-    # Constraints for underlying dynamics model.
-    max_acceleration: float = 3.0 # [m/s^2] Absolute value threshold on acceleration input.
-    max_steering_angle: float = 1.047197  # [rad] Absolute value threshold on steering angle state.
-    max_steering_angle_rate: float = 0.5  # [rad/s] Absolute value threshold on steering rate input.
-
-    # Parameters for dynamics / linearization.
-    min_velocity_linearization: float = 0.01 # [m/s] Absolute value threshold below which linearization velocity is modified.
-    wheelbase: float = get_pacifica_parameters().wheel_base  # [m] Wheelbase length parameter for the vehicle.
-
-
-class ILQRWarmStartParameters:
-    """Parameters related to generating a warm start trajectory for iLQR."""
-
-    k_velocity_error_feedback: float = 0.5 # Gain for initial velocity error for warm start acceleration.
-    k_steering_angle_error_feedback: float = 0.05 # Gain for initial steering angle error for warm start steering rate.
-    lookahead_distance_lateral_error: float = 15.0  # [m] Distance ahead for which we estimate lateral error.
-    k_lateral_error: float = 0.1 # Gain for lateral error to compute steering angle feedback.
-    jerk_penalty_warm_start_fit: float = 1e-4 # Penalty for jerk in velocity profile estimation.
-    curvature_rate_penalty_warm_start_fit: float = 1e-2 # Penalty for curvature rate in curvature profile estimation.
-
-
 class TrajectoryToControl:
     """Trajector to control variable based on iLQR solver implementation, see module docstring for details."""
 
     def __init__(
         self,
-        solver_params = ILQRSolverParameters,
-        warm_start_params = ILQRWarmStartParameters,
+        solver_params: ILQRSolverParameters,
+        warm_start_params: ILQRWarmStartParameters,
     ) -> None:
         """
         Initialize solver parameters.
