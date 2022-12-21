@@ -28,6 +28,23 @@ class TrainingState:
         return self.state.time_point
 
 
+def get_relative_pose_matrices_to(
+    gt_matrices: torch.Tensor, cl_matrices: torch.Tensor
+) -> torch.Tensor:
+    """Generate relative pose matrices realtive to ground truth.
+
+    Args:
+        gt_matrices (torch.Tensor): ground truth matrices.
+        cl_matrices (torch.Tensor): closed loop or other matrices of the same shape.
+
+    Returns:
+        torch.Tensor: pose matrices relative to gt.
+    """
+    transform_origin = torch.linalg.inv(gt_matrices)
+    transform_relative = transform_origin @ cl_matrices
+    return transform_relative
+
+
 def principal_value(
     angle: torch.Tensor, min_: float = -math.pi
 ) -> torch.Tensor:
