@@ -1,6 +1,7 @@
 import contextlib
 import math
 from dataclasses import dataclass
+from typing import Optional
 
 import torch
 
@@ -12,11 +13,14 @@ class TrainingState:
     """Class for recording training status of each scenario, used in closed loop training."""
 
     state: EgoState
-    last_prediction: torch.Tensor
+    last_prediction: Optional[torch.Tensor]
     iteration: int
+    forced_reset_count: int = 0
+    num_iter_without_reset: int = 0
 
     def __post_init__(self):
-        assert self.last_prediction.shape[-1] == 3
+        if self.last_prediction is not None:
+            assert self.last_prediction.shape[-1] == 3
         assert self.iteration >= 0
 
     @property
