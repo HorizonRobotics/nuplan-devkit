@@ -1,0 +1,4 @@
+_target_: nuplan.planning.training.modeling.closed_loop_utilities.kinematic_bicycle_batched.BatchedKinematicBicycleModel
+_convert_: 'all'
+
+vehicle: ${scenario_builder.vehicle_parameters}

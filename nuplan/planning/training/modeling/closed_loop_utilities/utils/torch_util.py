@@ -14,14 +14,14 @@ class TrainingState:
 
     state: EgoState
     last_prediction: Optional[torch.Tensor]
-    iteration: int
+    current_iteration: int
     forced_reset_count: int = 0
     num_iter_without_reset: int = 0
 
     def __post_init__(self):
         if self.last_prediction is not None:
             assert self.last_prediction.shape[-1] == 3
-        assert self.iteration >= 0
+        assert self.current_iteration >= 0
 
     @property
     def time_point(self):

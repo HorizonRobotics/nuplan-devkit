@@ -23,7 +23,7 @@ from nuplan.planning.training.modeling.closed_loop_utilities.raster_repainter im
     repaint_raster
 from nuplan.planning.training.modeling.closed_loop_utilities.target_trajectory_recomputer import \
     TargetTrajectoryRecomputer
-from nuplan.planning.training.modeling.closed_loop_utilities.utils.numpy_util import \
+from nuplan.planning.training.modeling.closed_loop_utilities.utils.torch_util import \
     get_relative_pose_matrices_to
 from nuplan.planning.training.modeling.metrics.planning_metrics import \
     AbstractTrainingMetric

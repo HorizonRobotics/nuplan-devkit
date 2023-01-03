@@ -1,6 +1,6 @@
 
 import time
-from typing import List, Optional, Tuple
+from typing import List
 
 import numpy as np
 import torch
@@ -29,10 +29,9 @@ def _make_banded_difference_matrix(number_rows: int, device):
 
     return banded_matrix
 
-    
 def _fit_initial_curvature_and_curvature_rate_profile(
-    heading_displacements,
-    velocity_profile,
+    heading_displacements: torch.Tensor,
+    velocity_profile: torch.Tensor,
     discretization_time: float,
     curvature_rate_penalty: float,
     initial_curvature_penalty: float = INITIAL_CURVATURE_PENALTY,
@@ -55,40 +54,34 @@ def _fit_initial_curvature_and_curvature_rate_profile(
     # Core problem: minimize_x ||y-Ax||_2
     num_batch, num_displacements = heading_displacements.shape
     device = heading_displacements.device
-    initial_curvature = torch.zeros((num_batch, 1), device=device, dtype=torch.float64)
-    curvature_rate_profile = torch.zeros((num_batch, num_displacements-1), device=device, dtype=torch.float64)
 
-    for idx in range(num_batch):
-        y = heading_displacements[idx].double()
-        A = torch.tril(
-            torch.ones((len(y), len(y)), dtype=torch.double, device=device)
-            )  # lower triangular matrix]
-        A[:, 0] = velocity_profile[idx] * discretization_time
+    y = heading_displacements.double()
+    A = torch.ones((num_batch, num_displacements, num_displacements), dtype=torch.float64, device=device).tril_()
+    A[:, :, 0] = velocity_profile * discretization_time
+    A[:, 1:, 1:] *= velocity_profile[:, 1:, None] * discretization_time**2
 
-        for idx_v, velocity in enumerate(velocity_profile[idx]):
-            if idx_v == 0:
-                continue
-            A[idx_v, 1:] *= velocity * discretization_time**2
+    # Regularization on curvature rate.  We add a small but nonzero weight on initial curvature too.
+    # This is since the corresponding row of the A matrix might be zero if initial speed is 0, leading to singularity.
+    # We guarantee that Q is positive definite such that the minimizer of the least squares problem is unique.
+    Q = curvature_rate_penalty * torch.eye(num_displacements, device=device, dtype=torch.double).tile(num_batch, 1, 1)
+    Q[:, 0, 0] = initial_curvature_penalty
 
-        # Regularization on curvature rate.  We add a small but nonzero weight on initial curvature too.
-        # This is since the corresponding row of the A matrix might be zero if initial speed is 0, leading to singularity.
-        # We guarantee that Q is positive definite such that the minimizer of the least squares problem is unique.
-        Q = curvature_rate_penalty * torch.eye(len(y), device=device, dtype=torch.double)
-        Q[0, 0] = initial_curvature_penalty
+    # Compute regularized least squares solution.
+    x = torch.linalg.pinv(A.transpose(1,2) @ A + Q) @ A.transpose(1,2) @ y[..., None]
 
-        # Compute regularized least squares solution.
-        x = torch.linalg.pinv(A.T @ A + Q) @ A.T @ y
-
-        # Extract profile from solution.
-        initial_curvature[idx] = x[0]
-        curvature_rate_profile[idx, :] = x[1:]
+    # Extract profile from solution.
+    initial_curvature = x[:, 0]
+    curvature_rate_profile = x[:, 1:, 0]
 
     return initial_curvature, curvature_rate_profile
-
+    
 
 def _fit_initial_velocity_and_acceleration_profile(
-    xy_displacements, heading_profile, discretization_time: float, jerk_penalty: float
-) -> Tuple[float, ]:
+    xy_displacements: torch.Tensor, 
+    heading_profile: torch.Tensor, 
+    discretization_time: float, 
+    jerk_penalty: float
+):
     """
     Estimates initial velocity (v_0) and acceleration ({a_0, ...}) using least squares with jerk penalty regularization.
     :param xy_displacements: [m] Deviations in x and y occurring between M+1 poses, a M by 3 matrix.
@@ -101,7 +94,7 @@ def _fit_initial_velocity_and_acceleration_profile(
     assert discretization_time > 0.0, "Discretization time must be positive."
     assert jerk_penalty > 0, "Should have a positive jerk_penalty."
 
-    assert len(xy_displacements.shape) == 3, "Expect xy_displacements to be a matrix."
+    assert len(xy_displacements.shape) == 3, "Expect xy_displacements to be a 3-d tensor."
     assert xy_displacements.shape[2] == 2, "Expect xy_displacements to have 2 columns."
 
     num_displacements = xy_displacements.shape[1]  # aka M in the docstring
@@ -110,52 +103,27 @@ def _fit_initial_velocity_and_acceleration_profile(
 
     num_batch = xy_displacements.shape[0]
     device = xy_displacements.device
-    initial_velocity = torch.zeros((num_batch, 1), device=device, dtype=torch.float64)
-    acceleration_profile = torch.zeros((num_batch, num_displacements-1), device=device, dtype=torch.float64)
-    for idx in range(num_batch):
-        # Core problem: minimize_x ||y-Ax||_2
-        y = xy_displacements[idx].flatten()  # Flatten to a vector, [delta x_0, delta y_0, ...]
 
-        A = torch.zeros(
-            (2 * num_displacements, num_displacements), dtype=torch.float64, device=device)
-        for idx_timestep, heading in enumerate(heading_profile[idx]):
-            start_row = 2 * idx_timestep  # Which row of A corresponds to x-coordinate information at timestep k.
+    y = xy_displacements.reshape(num_batch, -1)
 
-            # Related to v_0, initial velocity - column 0.
-            # We fill in rows for measurements delta x_k, delta y_k.
-            A[start_row : (start_row + 2), 0] = torch.tensor(
-                [
-                    torch.cos(heading) * discretization_time,
-                    torch.sin(heading) * discretization_time,
-                ],
-                dtype=torch.float64,
-                device=device
-            )
-
-            if idx_timestep > 0:
-                # Related to {a_0, ..., a_k-1}, acceleration profile - column 1 to k.
-                # We fill in rows for measurements delta x_k, delta y_k.
-                A[start_row : (start_row + 2), 1 : (1 + idx_timestep)] = torch.tensor(
-                    [
-                        [torch.cos(heading) * discretization_time**2],
-                        [torch.sin(heading) * discretization_time**2],
-                    ],
-                    dtype=torch.float64,
-                    device=device
-                )
-
-        # Regularization using jerk penalty, i.e. difference of acceleration values.
-        # If there are M displacements, then we have M - 1 acceleration values.
-        # That means we have M - 2 jerk values, thus we make a banded difference matrix of that size.
-        banded_matrix = _make_banded_difference_matrix(num_displacements - 2, device)
-        R = torch.cat([torch.zeros((len(banded_matrix), 1), device=device), banded_matrix], dim=1)
-
-        # Compute regularized least squares solution.
-        x = torch.linalg.pinv(A.T @ A + jerk_penalty * R.T @ R) @ A.T @ y
-
-        # Extract profile from solution.
-        initial_velocity[idx, 0] = x[0]
-        acceleration_profile[idx] = x[1:]
+    A = torch.zeros((num_batch, 2*num_displacements, num_displacements), dtype=torch.float64, device=device)
+    A[:, 0::2, 0] = torch.cos(heading_profile) * discretization_time
+    A[:, 1::2, 0] = torch.sin(heading_profile) * discretization_time
+    for idx_timestep in range(num_displacements):
+        if idx_timestep > 0:
+            A[:, (2*idx_timestep)::2, 1:(1+idx_timestep)] = (torch.cos(heading_profile[:, idx_timestep:]) * discretization_time**2)[..., None]
+            A[:, (2*idx_timestep+1)::2, 1:(1+idx_timestep)] = (torch.sin(heading_profile[:, idx_timestep:]) * discretization_time**2)[..., None]
+    banded_matrix = _make_banded_difference_matrix(num_displacements - 2, device).tile((num_batch, 1, 1))
+    R = torch.cat([
+        torch.zeros((num_batch, banded_matrix.shape[1], 1), device=device),
+        banded_matrix,
+    ], dim=2)
+    
+    # Compute regularized least squares solution.
+    x = torch.linalg.pinv(A.transpose(1, 2) @ A + jerk_penalty * R.transpose(1,2) @ R) @ A.transpose(1,2) @ y[..., None]
+    # Extract profile from solution.
+    initial_velocity = x[:, 0, 0:1]
+    acceleration_profile = x[:, 1:, 0]
 
     return initial_velocity, acceleration_profile
 
@@ -369,29 +337,29 @@ class TrajectoryToControl:
         assert (
             len(state_cost_diagonal_entries) == self._n_states
         ), f"State cost matrix should have diagonal length {self._n_states}."
-        state_cost_diagonal_entries = torch.tensor(state_cost_diagonal_entries)
-        self._state_cost_matrix = torch.diag(state_cost_diagonal_entries).to(self._device)
+        state_cost_diagonal_entries = torch.tensor(state_cost_diagonal_entries, device=self._device)
+        self._state_cost_matrix = torch.diag(state_cost_diagonal_entries)
 
         input_cost_diagonal_entries = self._solver_params.input_cost_diagonal_entries
         assert (
             len(input_cost_diagonal_entries) == self._n_inputs
         ), f"Input cost matrix should have diagonal length {self._n_inputs}."
-        input_cost_diagonal_entries = torch.tensor(input_cost_diagonal_entries)
-        self._input_cost_matrix = torch.diag(input_cost_diagonal_entries).to(self._device)
+        input_cost_diagonal_entries = torch.tensor(input_cost_diagonal_entries, device=self._device)
+        self._input_cost_matrix = torch.diag(input_cost_diagonal_entries)
 
         state_trust_region_entries = self._solver_params.state_trust_region_entries
         assert (
             len(state_trust_region_entries) == self._n_states
         ), f"State trust region cost matrix should have diagonal length {self._n_states}."
-        state_trust_region_entries = torch.tensor(state_trust_region_entries)
-        self._state_trust_region_cost_matrix = torch.diag(state_trust_region_entries).to(self._device)
+        state_trust_region_entries = torch.tensor(state_trust_region_entries, device=self._device)
+        self._state_trust_region_cost_matrix = torch.diag(state_trust_region_entries)
 
         input_trust_region_entries = self._solver_params.input_trust_region_entries
         assert (
             len(input_trust_region_entries) == self._n_inputs
         ), f"Input trust region cost matrix should have diagonal length {self._n_inputs}."
-        input_trust_region_entries = torch.tensor(input_trust_region_entries)
-        self._input_trust_region_cost_matrix = torch.diag(input_trust_region_entries).to(self._device)
+        input_trust_region_entries = torch.tensor(input_trust_region_entries, device=self._device)
+        self._input_trust_region_cost_matrix = torch.diag(input_trust_region_entries)
 
     def solve(self, current_state, reference_trajectory):
         """
@@ -525,7 +493,8 @@ class TrajectoryToControl:
         reference_inputs_completed[:, 0, 1] += steering_rate_feedback
 
         # We rerun dynamics with constraints applied to make sure we have a feasible warm start for iLQR.
-        return self._run_forward_dynamics(current_state, reference_inputs_completed)
+        out = self._run_forward_dynamics(current_state, reference_inputs_completed)
+        return out
 
 
     def _dynamics_and_jacobian(
@@ -619,15 +588,10 @@ class TrajectoryToControl:
         :return: A feasible iterate after applying dynamics with state/input trajectories and Jacobian matrices.
         """
         num_batch, N = control_variables.shape[0], control_variables.shape[1]
-        state_trajectory = torch.tensor(float("nan")) * torch.ones(
-            (num_batch, N + 1, self._n_states), dtype=torch.float64, device=self._device)
-        final_input_trajectory = torch.tensor(float("nan")) * torch.ones_like(
-            control_variables, dtype=torch.float64, device=self._device)
-
-        state_jacobian_trajectory = torch.tensor(float("nan")) * torch.ones(
-            (num_batch, N, self._n_states, self._n_states), dtype=torch.float64, device=self._device)
-        final_input_jacobian_trajectory = torch.tensor(float("nan")) * torch.ones(
-            (num_batch, N, self._n_states, self._n_inputs), dtype=torch.float64, device=self._device)
+        state_trajectory = torch.Tensor().new_full((num_batch, N+1, self._n_states), fill_value=float("nan"), dtype=torch.float64, device=self._device)
+        final_input_trajectory = torch.Tensor().new_full(control_variables.shape, fill_value=float("nan"), dtype=torch.float64, device=self._device)
+        state_jacobian_trajectory = torch.Tensor().new_full((num_batch, N, self._n_states, self._n_states), fill_value=float("nan"), dtype=torch.float64, device=self._device)
+        final_input_jacobian_trajectory = torch.Tensor().new_full((num_batch, N, self._n_states, self._n_inputs), fill_value=float("nan"), dtype=torch.float64, device=self._device)
 
         state_trajectory[:, 0, :] = current_state
 
@@ -884,21 +848,17 @@ class TrajectoryToControl:
         :param lqr_input_policy: Contains the LQR policy to apply.
         :return: The next input trajectory found by applying the LQR policy.
         """
-        state_trajectory = current_iterate['state_trajectory']
-        input_trajectory = current_iterate['input_trajectory']
+        state_trajectory = current_iterate['state_trajectory'] # [80, 17, 5]
+        input_trajectory = current_iterate['input_trajectory'] # [80, 16, 2]
 
         # Trajectory of state perturbations while applying feedback policy.
         # Starts with zero as the initial states match exactly, only later states might vary.
         num_batch, N = input_trajectory.shape[0], input_trajectory.shape[1]
-        delta_state_trajectory = torch.tensor(float('nan')) * torch.ones((
-            num_batch, N + 1, self._n_states), dtype=torch.float64, device=self._device)
-        delta_state_trajectory[:, 0] = torch.zeros((num_batch, self._n_states), dtype=torch.float64, device=self._device)
+        delta_state_trajectory = torch.Tensor().new_full((num_batch, N+1, self._n_states), fill_value=float("nan"), dtype=torch.float64, device=self._device)
+        delta_state_trajectory[:, 0, :] = 0.
 
         # This is the updated input trajectory we will return after applying the input perturbations.
-        input_next_trajectory = torch.tensor(float('nan')) * torch.ones_like(
-            input_trajectory, dtype=torch.float64, device=self._device)
-
-        N = input_trajectory.shape[1]
+        input_next_trajectory = torch.Tensor().new_full(input_trajectory.shape, fill_value=float("nan"), dtype=torch.float64, device=self._device)
 
         for idx in range(N):
             input_lin = input_trajectory[:, idx]
