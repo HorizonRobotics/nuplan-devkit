@@ -151,7 +151,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
         self._updated_flag = True
 
 
-    def _step(self, batch: Tuple[FeaturesType, TargetsType], prefix: str, batch_idx: int) -> Dict[str, Any]:
+    def _step(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], prefix: str, batch_idx: int) -> Dict[str, Any]:
         """
         Propagates the model forward and backwards and computes/logs losses and metrics.
 

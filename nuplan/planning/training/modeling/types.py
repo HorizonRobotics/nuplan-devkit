@@ -2,10 +2,9 @@ from typing import Dict, List
 
 import torch
 
+from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.planning.training.preprocessing.feature_builders.abstract_feature_builder import (
-    AbstractModelFeature,
-    AbstractScenario,
-)
+    AbstractModelFeature, AbstractScenario)
 
 
 class MissingFeature(Exception):
@@ -19,6 +18,7 @@ class MissingFeature(Exception):
 FeaturesType = Dict[str, AbstractModelFeature]
 TargetsType = Dict[str, AbstractModelFeature]
 ScenarioListType = List[AbstractScenario]
+EgoStateListType = List[EgoState]
 TensorFeaturesType = Dict[str, torch.Tensor]
 
 

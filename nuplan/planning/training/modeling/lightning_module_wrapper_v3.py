@@ -1,4 +1,3 @@
-import copy
 import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
@@ -35,7 +34,8 @@ from nuplan.planning.training.modeling.torch_module_wrapper import \
     TorchModuleWrapper
 from nuplan.planning.training.modeling.types import (FeaturesType,
                                                      ScenarioListType,
-                                                     TargetsType)
+                                                     TargetsType,
+                                                     EgoStateListType)
 from nuplan.planning.training.preprocessing.features.trajectory import \
     Trajectory
 
@@ -130,11 +130,10 @@ class LightningModuleWrapperV3(pl.LightningModule):
     def on_train_start(self) -> None:
         self._setup_closed_loop_if_necessary()
 
-    def update_controllers(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType]) -> None:
+    def update_controllers(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType, EgoStateListType]) -> None:
         """Update closed loop controllers"""
-        features, _, scenarios = batch
+        features, _, scenarios, gt_ego_states = batch
         current_iterations = features["current_iteration"] # int tensor
-        gt_ego_states = [i.get_ego_state_at_iteration(j.item()) for i, j in zip(scenarios, current_iterations)]
         scenario_tokens = [i.token for i in scenarios]
         # Add unseen scenario, or update a seen scenario
         to_be_updated_tokens = []
@@ -164,7 +163,7 @@ class LightningModuleWrapperV3(pl.LightningModule):
         self._updated_flag = True
 
 
-    def _step(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], prefix: str, batch_idx: int) -> Dict[str, Any]:
+    def _step(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType, EgoStateListType], prefix: str, batch_idx: int) -> Dict[str, Any]:
         """
         Propagates the model forward and backwards and computes/logs losses and metrics.
 
@@ -174,12 +173,12 @@ class LightningModuleWrapperV3(pl.LightningModule):
         :param prefix: prefix prepended at each artifact's name during logging
         :return: model's scalar loss
         """
-        features, targets, scenarios = batch
+        features, targets, scenarios, gt_ego_states = batch
         additional_logged_objects = {}
         # Closed-loop extra computations
         if self.is_closed_loop_model and prefix == 'train':
+            assert len(gt_ego_states) > 0
             current_iterations = features["current_iteration"] # int tensor
-            gt_ego_states = [i.get_ego_state_at_iteration(j.item()) for i, j in zip(scenarios, current_iterations)]
             scenario_tokens = [i.token for i in scenarios]
             N = len(scenario_tokens)
 
@@ -194,8 +193,9 @@ class LightningModuleWrapperV3(pl.LightningModule):
                     f"{iteration.item()}, recorded iter is "
                     f"{self._token2state[token].current_iteration}")
                     # self._token2state[token].update(ego_state.time_point)
+                        # TODO: not sure what to do here if time not synced.
 
-            # At this point, time must be aligned.
+            # ====== At this point, time must be aligned ======
 
             # Gather absoluate states (both cl and gt)
             cl_pose_matrices = _get_batched_pose_matrices(

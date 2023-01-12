@@ -109,8 +109,9 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
             key: value.to_feature_tensor() for key, value in targets.items()
         }
         scenarios = [scenario]
+        ego_state = [scenario.get_ego_state_at_iteration(iteration)]
 
-        return features, targets, scenarios
+        return features, targets, scenarios, ego_state
 
 
 class ClosedLoopScenarioDatasetV3(torch.utils.data.Dataset):
@@ -232,5 +233,6 @@ class ClosedLoopScenarioDatasetV3(torch.utils.data.Dataset):
             key: value.to_feature_tensor() for key, value in targets.items()
         }
         scenarios = [scenario]
+        ego_state = [scenario.get_ego_state_at_iteration(iteration)]
 
-        return features, targets, scenarios
+        return features, targets, scenarios, ego_state
