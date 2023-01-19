@@ -68,6 +68,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
         warm_up_lr_scheduler: Optional[DictConfig] = None,
         objective_aggregate_mode: str = 'mean',
         ego_controller: Optional[AbstractTrainingController] = None,
+        feature_cache=None,
     ) -> None:
         """
         Initializes the class.
@@ -94,6 +95,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
         self.batch_size = batch_size
 
         self._ego_controller = ego_controller
+        self._feature_cache = feature_cache
         self._future_horizon = model.future_trajectory_sampling.time_horizon
         self._step_interval = model.future_trajectory_sampling.step_time
 
@@ -106,6 +108,11 @@ class LightningModuleWrapperV2(pl.LightningModule):
         self._token2state: Dict[str, AbstractTrainingController] = None # State memory for every scenario
         self._updated_flag = False
         self._setup_closed_loop_if_necessary()
+
+        # sequential model essentials
+        self.is_sequential_with_cache = False
+        self._token2cache = None
+        self._setup_sequential_cache_if_necessary()
 
         # Validate metrics objectives and model
         model_targets = {builder.get_feature_unique_name() for builder in model.get_list_of_computed_target()}
@@ -126,6 +133,11 @@ class LightningModuleWrapperV2(pl.LightningModule):
             )
             self._token2state = {}
             self._updated_flag = False
+
+    def _setup_sequential_cache_if_necessary(self):
+        if self._feature_cache is not None:
+            self.is_sequential_with_cache = True
+            self._token2cache = {}
 
     def update_controllers(self, batch: Tuple[FeaturesType, TargetsType]) -> None:
         """Update closed loop controllers"""
@@ -150,6 +162,50 @@ class LightningModuleWrapperV2(pl.LightningModule):
                 self._token2state[token].update(ego_state.time_point)
         self._updated_flag = True
 
+    def update_cache_before_forward(self, batch: Tuple[FeaturesType, TargetsType]):
+        """Update feature cache before model forward"""
+        features, _, scenarios = batch
+        current_iterations = features["current_iteration"]  # int tensor
+        current_desires = [scenario.get_desire_at_iteration(iteration) for scenario, iteration in zip(scenarios, current_iterations)]
+        scenario_tokens = [scenario.token for scenario in scenarios]
+        desires = []
+        feature_buffers = []
+        device = features["cameras_e2e"].cameras.device
+
+        for token, current_desire in zip(scenario_tokens, current_desires):
+            if token not in self._token2cache:
+                new_feature_cache = copy.deepcopy(self._feature_cache)
+                new_feature_cache.set_token(token)
+                self._token2cache[token] = new_feature_cache
+
+            if self._token2cache[token].is_enabled('desire_buffer'):
+                # add current desire to the scenario desire cache
+                self._token2cache[token].update('desire_buffer', torch.Tensor(current_desire))
+
+                # get desire buffer
+                desire = self._token2cache[token].get_cache('desire_buffer', device=device)
+                desires.append(desire)
+            else:
+                desire = torch.unsqueeze(torch.Tensor(current_desire), 0)
+                desire = desire.to(device=device)
+                desires.append(desire)  # (1, 8)
+
+            # get feature buffer
+            feature_buffer = self._token2cache[token].get_cache('feature_buffer', device=device)
+            feature_buffers.append(feature_buffer)
+
+        desires = torch.stack(desires, 0)
+        feature_buffers = torch.stack(feature_buffers, 0)
+
+        return desires, feature_buffers
+
+    def update_cache_after_forward(self, batch: Tuple[FeaturesType, TargetsType], feature_buffers) -> None:
+        _, _, scenarios = batch
+        scenario_tokens = [scenario.token for scenario in scenarios]
+
+        for token, feature_buffer in zip(scenario_tokens, feature_buffers.data):
+            # add current out_feature to the scenario feature_buffer cache
+            self._token2cache[token].update('feature_buffer', feature_buffer.squeeze())
 
     def _step(self, batch: Tuple[FeaturesType, TargetsType], prefix: str, batch_idx: int) -> Dict[str, Any]:
         """
@@ -172,7 +228,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
 
             if not self._updated_flag:
                 self.update_controllers(batch)
-            
+
             # Add unseen scenario, or update a seen scenario
             for token, iteration, ego_state in zip(scenario_tokens, current_iterations, gt_ego_states):
                 iter_diff = iteration - self._token2state[token].current_iteration
@@ -229,16 +285,24 @@ class LightningModuleWrapperV2(pl.LightningModule):
                     updated_target.append(ref_traj)
                     num_corrections += 1
                     reset_sample_index.append(i)
-            
+
             features["raster"].data = new_raster
             targets["trajectory"].data = default_collate(updated_target)
             additional_logged_objects["batch_corrections"] = num_corrections
             additional_logged_objects["reset_sample_index"] = reset_sample_index
 
+        if self.is_sequential_with_cache:
+            desires, feature_buffers = self.update_cache_before_forward(batch)
+            features["desires"] = desires
+            features["feature_buffers"] = feature_buffers
+
         predictions = self.forward(features)
         objectives = self._compute_objectives(predictions, targets, scenarios)
         metrics = self._compute_metrics(predictions, targets)
         loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
+
+        if self.is_sequential_with_cache:
+            self.update_cache_after_forward(batch, predictions["out_feature"].detach())
 
         # Store predicted trajectory.
         # Cannot update here, because we don't know what the next time point is.
@@ -259,9 +323,12 @@ class LightningModuleWrapperV2(pl.LightningModule):
         self._log_step(loss, objectives, metrics, prefix, batch_idx=batch_idx)
 
         return_dict = {
-            "loss": loss, 
+            "loss": loss,
             "trajectory": predictions["trajectory"],
         }
+        if 'bev_feature' in predictions:
+            return_dict['bev_feature'] = predictions['bev_feature'].to_device('cpu').detach()
+
         return_dict.update(additional_logged_objects)
         self._updated_flag = False
         return return_dict

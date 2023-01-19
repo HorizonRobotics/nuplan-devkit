@@ -1,0 +1,9 @@
+imitation_vae_objective:
+  _target_: nuplan_extent.planning.training.modeling.objectives.imitation_vae_objective.ImitationVAEObjective
+  _convert_: 'all'
+
+  weight: 1.0                  # weight contribution to the overall loss
+  xy_weight: 1.0
+  heading_weight: 1.0
+  kl_weight: 1.0
+  target_sigma: 5.6547

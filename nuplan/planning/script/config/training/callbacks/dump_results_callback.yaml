@@ -1,0 +1,6 @@
+dump_results_callback:
+  _target_: nuplan_extent.planning.training.callbacks.dump_results_callback.DumpResultsCallback
+  _convert_: 'all'
+
+  dump_dir: /mnt/nas20/wenxin.shao/misc/result_dump/test.pkl
+  dump_bev: false

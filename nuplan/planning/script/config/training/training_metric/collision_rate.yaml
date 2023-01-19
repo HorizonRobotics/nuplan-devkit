@@ -1,0 +1,6 @@
+collision_rate:
+  _target_: nuplan_extent.planning.training.modeling.metrics.planning_metrics_custom.CollisionRate
+  _convert_: 'all'
+
+  ego_dimension: [1.85, 4.084]
+  lift: ${common_cfg.lift}

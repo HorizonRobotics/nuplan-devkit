@@ -44,7 +44,8 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
             scenarios = scenarios[:-scenarios_to_drop]
         self._idx2token = {}
         self._token2scenario = {i.token: i for i in scenarios}
-        self._scenario_max_len = min([i.get_number_of_iterations() for i in scenarios])
+        # nuplan_mark
+        self._scenario_max_len = min([i.get_number_of_iterations() for i in scenarios]) - scenarios[0].total_steps
         self._length = self._scenario_max_len * len(scenarios)
         self._batch_size = batch_size
 
@@ -73,7 +74,7 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
         token, iteration = token_time.split('_')
         iteration = int(iteration)
         scenario = self._token2scenario[token]
-        
+
         features, targets, _ = self._feature_preprocessor.compute_features(scenario, iteration)
 
         # TODO: enable augmentors

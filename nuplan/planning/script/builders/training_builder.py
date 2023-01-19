@@ -66,6 +66,7 @@ def build_lightning_datamodule(
         worker=worker,
         scenario_type_sampling_weights=cfg.scenario_type_weights.scenario_type_sampling_weights,
         is_closed_loop='ego_controller' in cfg,
+        is_sequence_based=cfg.scenario_builder.get('scene_based', False),
         **cfg.data_loader.datamodule,
     )
 
@@ -90,18 +91,42 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
         ego_controller = instantiate(cfg.ego_controller)
     else:
         ego_controller = None
+
+    # Build feature cache for sequential model
+    if "feature_cache" in cfg:
+        feature_cache = instantiate(cfg.feature_cache)
+    else:
+        feature_cache = None
+
     # Create the complete Module
-    model = LightningModuleWrapperV2(
-        model=torch_module_wrapper,
-        objectives=objectives,
-        metrics=metrics,
-        batch_size=cfg.data_loader.params.batch_size,
-        optimizer=cfg.optimizer,
-        lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
-        warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
-        objective_aggregate_mode=cfg.objective_aggregate_mode,
-        ego_controller=ego_controller,
-    )
+    if isinstance(cfg.checkpoint, str):
+        logger.info(f"Loading checkpoint from {cfg.checkpoint}")
+        model = LightningModuleWrapperV2.load_from_checkpoint(
+            cfg.checkpoint,
+            model=torch_module_wrapper,
+            objectives=objectives,
+            metrics=metrics,
+            batch_size=cfg.data_loader.params.batch_size,
+            optimizer=cfg.optimizer,
+            lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
+            warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
+            objective_aggregate_mode=cfg.objective_aggregate_mode,
+            ego_controller=ego_controller,
+            feature_cache=feature_cache,
+        )
+    else:
+        model = LightningModuleWrapperV2(
+            model=torch_module_wrapper,
+            objectives=objectives,
+            metrics=metrics,
+            batch_size=cfg.data_loader.params.batch_size,
+            optimizer=cfg.optimizer,
+            lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
+            warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
+            objective_aggregate_mode=cfg.objective_aggregate_mode,
+            ego_controller=ego_controller,
+            feature_cache=feature_cache,
+        )
 
     return cast(pl.LightningModule, model)
 
@@ -151,14 +176,14 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
 
             params.resume_from_checkpoint = str(last_checkpoint)
             latest_epoch = torch.load(last_checkpoint)['epoch']
-            params.max_epochs += latest_epoch
+            # params.max_epochs += latest_epoch
             logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
 
         else:
             # Resume training from designated checkpoint
             params.resume_from_checkpoint = str(cfg.lightning.trainer.checkpoint.resume_training)
             latest_epoch = torch.load(params.resume_from_checkpoint)['epoch']
-            params.max_epochs += latest_epoch
+            # params.max_epochs += latest_epoch
             logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {params.resume_from_checkpoint}')
         OmegaConf.set_struct(cfg, True)
 
