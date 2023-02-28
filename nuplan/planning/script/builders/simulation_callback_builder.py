@@ -57,7 +57,7 @@ def build_simulation_callbacks(
         elif is_target_type(config, TimingCallback):
             tensorboard = torch.utils.tensorboard.SummaryWriter(log_dir=output_dir)
             callback = instantiate(config, writer=tensorboard)
-        elif is_target_type(config, SimulationLogCallback) or is_target_type(config, MetricCallback):
+        elif is_target_type(config, MetricCallback):
             # SimulationLogCallback and MetricCallback store state (futures) from each runner, so they are initialized
             # in the simulation builder
             continue
