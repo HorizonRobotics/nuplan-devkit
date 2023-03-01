@@ -74,13 +74,7 @@ def get_local_scenario_cache(cache_path: str, feature_names: Set[str]) -> List[P
     assert cache_dir.exists(), f'Local cache {cache_dir} does not exist!'
     assert any(cache_dir.iterdir()), f'No files found in the local cache {cache_dir}!'
 
-    candidate_scenario_dirs = []
-    for log_dir in cache_dir.iterdir():
-        for type_dir in log_dir.iterdir():
-            if type_dir.is_file():
-                    continue
-            for path in type_dir.iterdir():
-                    candidate_scenario_dirs.append(path)
+    candidate_scenario_dirs = [path for log_dir in cache_dir.iterdir() for type_dir in log_dir.iterdir() for path in type_dir.iterdir()]
 
     # Keep only dir paths that contains all required feature names
     scenario_cache_paths = [

@@ -38,6 +38,9 @@ trainer:
     gradient_clip_algorithm: norm  # [value, norm] method to clip gradients
 
     checkpoint_callback: true  # enable default checkpoint
+    replace_sampler_ddp: true  # set to false to add your own distributed sampler
+    sync_batchnorm: false  # enable synchronization between batchnorm layers across all GPUs
+    deterministic: false  # If true enables cudnn.deterministic. Might make your system slower, but ensures reproducibility
 
   overfitting:
     enable: false  # run an overfitting test instead of training

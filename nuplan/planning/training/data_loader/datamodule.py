@@ -10,6 +10,7 @@ from torch.utils.data.sampler import WeightedRandomSampler
 
 from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
 from nuplan.planning.training.data_augmentation.abstract_data_augmentation import AbstractAugmentor
+from nuplan.planning.training.data_loader.new_closed_loop_scenario_dataset import ClosedLoopScenarioDatasetV2, ClosedLoopScenarioDatasetV3
 from nuplan.planning.training.data_loader.distributed_sampler_wrapper import DistributedSamplerWrapper
 from nuplan.planning.training.data_loader.scenario_dataset import ScenarioDataset
 from nuplan.planning.training.data_loader.splitter import AbstractSplitter
@@ -29,6 +30,7 @@ def create_dataset(
     dataset_fraction: float,
     dataset_name: str,
     augmentors: Optional[List[AbstractAugmentor]] = None,
+    closed_loop_batch_size: Optional[int] = None,
 ) -> torch.utils.data.Dataset:
     """
     Create a dataset from a list of samples.
@@ -38,18 +40,28 @@ def create_dataset(
     :param dataset_name: Set name (train/val/test).
     :param scenario_type_loss_weights: Dictionary of scenario type loss weights.
     :param augmentors: List of augmentor objects for providing data augmentation to data samples.
+    :param closed_loop_batch_size: per-gpu batch size used during closed-loop training.
     :return: The instantiated torch dataset.
     """
     # Sample the desired fraction from the total samples
     num_keep = int(len(samples) * dataset_fraction)
     selected_scenarios = random.sample(samples, num_keep)
 
-    logger.info(f"Number of samples in {dataset_name} set: {len(selected_scenarios)}")
-    return ScenarioDataset(
-        scenarios=selected_scenarios,
-        feature_preprocessor=feature_preprocessor,
-        augmentors=augmentors,
-    )
+    if closed_loop_batch_size is not None:
+        logger.info(f"Creating closed-loop dataset...")
+        return ClosedLoopScenarioDatasetV2(
+            batch_size=closed_loop_batch_size,
+            scenarios=selected_scenarios,
+            feature_preprocessor=feature_preprocessor,
+            augmentors=augmentors,
+        )
+    else:
+        logger.info(f"Creating open-loop dataset. Number of samples in {dataset_name} set: {len(selected_scenarios)}")
+        return ScenarioDataset(
+            scenarios=selected_scenarios,
+            feature_preprocessor=feature_preprocessor,
+            augmentors=augmentors,
+        )
 
 
 def distributed_weighted_sampler_init(
@@ -104,6 +116,7 @@ class DataModule(pl.LightningDataModule):
         scenario_type_sampling_weights: DictConfig,
         worker: WorkerPool,
         augmentors: Optional[List[AbstractAugmentor]] = None,
+        is_closed_loop: Optional[bool] = False,
     ) -> None:
         """
         Initialize the class.
@@ -153,6 +166,9 @@ class DataModule(pl.LightningDataModule):
         # Worker for multiprocessing to speed up initialization of datasets
         self._worker = worker
 
+        # Is closed loop
+        self._is_closed_loop = is_closed_loop
+
     @property
     def feature_and_targets_builder(self) -> FeaturePreprocessor:
         """Get feature and target builders."""
@@ -173,11 +189,12 @@ class DataModule(pl.LightningDataModule):
             assert len(train_samples) > 0, 'Splitter returned no training samples'
 
             self._train_set = create_dataset(
-                train_samples,
-                self._feature_preprocessor,
-                self._train_fraction,
-                "train",
-                self._augmentors,
+                train_samples, 
+                self._feature_preprocessor, 
+                self._train_fraction, 
+                "train", 
+                self._augmentors, 
+                self._dataloader_params.batch_size if self._is_closed_loop else None
             )
 
             # Validation Dataset
@@ -220,13 +237,24 @@ class DataModule(pl.LightningDataModule):
         else:
             weighted_sampler = None
 
-        return torch.utils.data.DataLoader(
-            dataset=self._train_set,
-            shuffle=weighted_sampler is None,
-            collate_fn=FeatureCollate(),
-            sampler=weighted_sampler,
-            **self._dataloader_params,
-        )
+        if self._is_closed_loop:
+            return torch.utils.data.DataLoader(
+                dataset=self._train_set,
+                **self._dataloader_params,
+                sampler=torch.utils.data.distributed.DistributedSampler(
+                    self._train_set,
+                    shuffle=False,
+                ),
+                collate_fn=FeatureCollate(),
+            )
+        else:
+            return torch.utils.data.DataLoader(
+                dataset=self._train_set,
+                shuffle=weighted_sampler is None, 
+                collate_fn=FeatureCollate(),
+                sampler=weighted_sampler,
+                **self._dataloader_params,
+            )
 
     def val_dataloader(self) -> torch.utils.data.DataLoader:
         """

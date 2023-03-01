@@ -102,7 +102,7 @@ class Raster(AbstractModelFeature):
         Get the 2D grid representing the ego layer
         located at channel 0.
         """
-        return self._get_data_channel(range(0, self.ego_agent_sep_channel_num))
+        return self._get_data_channel(0)
 
     @property
     def agents_layer(self) -> FeatureDataType:
@@ -112,7 +112,7 @@ class Raster(AbstractModelFeature):
         """
         start_channel = self.ego_agent_sep_channel_num
         end_channel = self.num_channels() - self.num_map_channels
-        return self._get_data_channel(range(start_channel, end_channel))
+        return self._get_data_channel(1)
 
     @property
     def roadmap_layer(self) -> FeatureDataType:
@@ -120,7 +120,7 @@ class Raster(AbstractModelFeature):
         Get the 2D grid representing the map layer
         located at channel 2.
         """
-        return self._get_data_channel(-2)
+        return self._get_data_channel(2)
 
     @property
     def baseline_paths_layer(self) -> FeatureDataType:
@@ -128,7 +128,7 @@ class Raster(AbstractModelFeature):
         Get the 2D grid representing the baseline paths layer
         located at channel 3.
         """
-        return self._get_data_channel(-1)
+        return self._get_data_channel(3)
 
     def _is_channels_last(self) -> bool:
         """

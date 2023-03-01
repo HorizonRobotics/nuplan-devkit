@@ -1,6 +1,10 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
-from nuplan.planning.training.modeling.types import FeaturesType, ScenarioListType, TargetsType
+from torch.utils.data.dataloader import default_collate
+
+from nuplan.planning.training.modeling.types import (FeaturesType,
+                                                     ScenarioListType,
+                                                     TargetsType)
 
 
 def _batch_scenarios(to_be_batched_scenarios: List[ScenarioListType]) -> ScenarioListType:
@@ -19,7 +23,10 @@ def _batch_abstract_features(
     output_features = {}
     for key in initial_not_batched_features.keys():
         list_features = [feature_single[key] for feature_single in to_be_batched_features]
-        output_features[key] = initial_not_batched_features[key].collate(list_features)
+        if hasattr(initial_not_batched_features[key], "collate"):
+            output_features[key] = initial_not_batched_features[key].collate(list_features)
+        else:
+            output_features[key] = default_collate(list_features)
 
     return output_features
 
