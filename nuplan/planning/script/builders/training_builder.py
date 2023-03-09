@@ -17,7 +17,7 @@ from nuplan.planning.script.builders.training_callback_builder import build_call
 from nuplan.planning.script.builders.training_metrics_builder import build_training_metrics
 from nuplan.planning.script.builders.utils.utils_checkpoint import extract_last_checkpoint_from_experiment
 from nuplan.planning.training.data_loader.datamodule import DataModule
-from nuplan.planning.training.modeling.lightning_module_wrapper_v2 import LightningModuleWrapperV2
+from nuplan.planning.training.modeling.lightning_module_wrapper_closeloop import LightningModuleWrapperCloseloop
 from nuplan.planning.training.modeling.torch_module_wrapper import TorchModuleWrapper
 from nuplan.planning.training.preprocessing.feature_preprocessor import FeaturePreprocessor
 from nuplan.planning.utils.multithreading.worker_pool import WorkerPool
@@ -65,8 +65,6 @@ def build_lightning_datamodule(
         augmentors=augmentors,
         worker=worker,
         scenario_type_sampling_weights=cfg.scenario_type_weights.scenario_type_sampling_weights,
-        is_closed_loop='ego_controller' in cfg,
-        is_sequence_based=cfg.scenario_builder.get('scene_based', False),
         **cfg.data_loader.datamodule,
     )
 
@@ -86,22 +84,10 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     # Build metrics to evaluate the performance of predictions
     metrics = build_training_metrics(cfg)
 
-    # Build controller if closed-loop
-    if "ego_controller" in cfg:
-        ego_controller = instantiate(cfg.ego_controller)
-    else:
-        ego_controller = None
-
-    # Build feature cache for sequential model
-    if "feature_cache" in cfg:
-        feature_cache = instantiate(cfg.feature_cache)
-    else:
-        feature_cache = None
-
     # Create the complete Module
     if isinstance(cfg.checkpoint, str):
         logger.info(f"Loading checkpoint from {cfg.checkpoint}")
-        model = LightningModuleWrapperV2.load_from_checkpoint(
+        model = LightningModuleWrapperCloseloop.load_from_checkpoint(
             cfg.checkpoint,
             model=torch_module_wrapper,
             objectives=objectives,
@@ -111,11 +97,9 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
             lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
             warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
             objective_aggregate_mode=cfg.objective_aggregate_mode,
-            ego_controller=ego_controller,
-            feature_cache=feature_cache,
         )
     else:
-        model = LightningModuleWrapperV2(
+        model = LightningModuleWrapperCloseloop(
             model=torch_module_wrapper,
             objectives=objectives,
             metrics=metrics,
@@ -124,8 +108,6 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
             lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
             warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
             objective_aggregate_mode=cfg.objective_aggregate_mode,
-            ego_controller=ego_controller,
-            feature_cache=feature_cache,
         )
 
     return cast(pl.LightningModule, model)

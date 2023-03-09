@@ -47,6 +47,14 @@ def create_dataset(
     num_keep = int(len(samples) * dataset_fraction)
     selected_scenarios = random.sample(samples, num_keep)
 
+    #
+    if len(selected_scenarios) == 1:
+        import copy
+        for i in range(15):
+            s = copy.deepcopy(selected_scenarios[0])
+            selected_scenarios.append(s)
+    #
+
     if batch_size is not None:
         logger.info(f"Creating closed-loop dataset...")
         return ClosedLoopScenarioDatasetV2(
@@ -114,8 +122,6 @@ class DataModule(pl.LightningDataModule):
         scenario_type_sampling_weights: DictConfig,
         worker: WorkerPool,
         augmentors: Optional[List[AbstractAugmentor]] = None,
-        is_closed_loop: Optional[bool] = False,
-        is_sequence_based: Optional[bool] = False,
     ) -> None:
         """
         Initialize the class.
@@ -165,16 +171,12 @@ class DataModule(pl.LightningDataModule):
         # Worker for multiprocessing to speed up initialization of datasets
         self._worker = worker
 
-        # Is sequence based
-        self._is_sequence_based = is_sequence_based
-        logger.info(f'sequence_based: {self._is_sequence_based}')
-
-        # Is closed loop
-        self._is_closed_loop = is_closed_loop
-
-        # sequential val and test
+        # sequential dataset
+        self._sequential_train = self._dataloader_params.get('sequential_train', False)
         self._sequential_val = self._dataloader_params.get('sequential_val', False)
         self._sequential_test = self._dataloader_params.get('sequential_test', False)
+        if self._sequential_train:
+            del self._dataloader_params.sequential_train
         if self._sequential_val:
             del self._dataloader_params.sequential_val
         if self._sequential_test:
@@ -205,7 +207,7 @@ class DataModule(pl.LightningDataModule):
                 self._train_fraction,
                 "train",
                 self._augmentors,
-                self._dataloader_params.batch_size if self._is_closed_loop or self._is_sequence_based else None
+                self._dataloader_params.batch_size if self._sequential_train else None
             )
 
             # Validation Dataset
@@ -264,7 +266,7 @@ class DataModule(pl.LightningDataModule):
         else:
             weighted_sampler = None
 
-        if self._is_closed_loop or self._is_sequence_based:
+        if self._sequential_train:
             return torch.utils.data.DataLoader(
                 dataset=self._train_set,
                 **self._dataloader_params,
@@ -292,7 +294,7 @@ class DataModule(pl.LightningDataModule):
         if self._val_set is None:
             raise DataModuleNotSetupError
 
-        if self._is_sequence_based:
+        if self._sequential_val:
             return torch.utils.data.DataLoader(
                 dataset=self._val_set,
                 **self._dataloader_params,
@@ -301,6 +303,12 @@ class DataModule(pl.LightningDataModule):
                     shuffle=False,
                 ),
                 collate_fn=FeatureCollate(),
+            )
+        else:
+            return torch.utils.data.DataLoader(
+                dataset=self._val_set,
+                collate_fn=FeatureCollate(),
+                **self._dataloader_params,
             )
 
     def test_dataloader(self) -> torch.utils.data.DataLoader:
@@ -312,7 +320,7 @@ class DataModule(pl.LightningDataModule):
         if self._test_set is None:
             raise DataModuleNotSetupError
 
-        if self._is_sequence_based:
+        if self._sequential_test:
             return torch.utils.data.DataLoader(
                 dataset=self._test_set,
                 **self._dataloader_params,
@@ -321,6 +329,12 @@ class DataModule(pl.LightningDataModule):
                     shuffle=False,
                 ),
                 collate_fn=FeatureCollate()
+            )
+        else:
+            return torch.utils.data.DataLoader(
+                dataset=self._test_set,
+                collate_fn=FeatureCollate(),
+                **self._dataloader_params,
             )
 
     def transfer_batch_to_device(

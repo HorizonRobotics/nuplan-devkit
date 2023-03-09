@@ -42,6 +42,8 @@ trainer:
     sync_batchnorm: false
     deterministic: false
 
+    profiler: simple
+
   overfitting:
     enable: false  # run an overfitting test instead of training
 

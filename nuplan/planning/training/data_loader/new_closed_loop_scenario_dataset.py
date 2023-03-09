@@ -71,7 +71,8 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
         """
         """
         token_time = self._idx2token[idx]  
-        token, iteration = token_time.split('_')
+        split_pos = token_time.rfind('_')
+        token, iteration = token_time[:split_pos], token_time[split_pos+1:]
         iteration = int(iteration)
         scenario = self._token2scenario[token]
 

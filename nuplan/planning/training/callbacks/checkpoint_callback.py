@@ -34,7 +34,7 @@ class ModelCheckpointAtEpochEnd(pl.callbacks.ModelCheckpoint):
         :param pl_module: LightningModule.
         """
         checkpoint_dir = Path(trainer.checkpoint_callback.dirpath).parent / 'checkpoints'
-        checkpoint_name = f'epoch={trainer.current_epoch}.ckpt'
+        checkpoint_name = f'epoch{trainer.current_epoch}.ckpt'
         checkpoint_path = checkpoint_dir / checkpoint_name
         trainer.save_checkpoint(str(checkpoint_path))
 
