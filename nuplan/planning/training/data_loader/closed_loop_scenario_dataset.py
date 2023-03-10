@@ -58,7 +58,7 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
         self._token2scenario = {i.token: i for i in scenarios}
         self._scenario_max_len = min(
             [i.get_number_of_iterations() for i in scenarios]
-        )
+        )  - scenarios[0].total_steps
         self._length = self._scenario_max_len * len(scenarios)
         self._batch_size = batch_size
 
@@ -87,7 +87,8 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
     ) -> Tuple[FeaturesType, TargetsType, ScenarioListType]:
         """Get a sample from the dataset."""
         token_time = self._idx2token[idx]
-        token, iteration = token_time.split("_")
+        split_pos = token_time.rfind('_')
+        token, iteration = token_time[:split_pos], token_time[split_pos+1:]
         iteration = int(iteration)
         scenario = self._token2scenario[token]
 

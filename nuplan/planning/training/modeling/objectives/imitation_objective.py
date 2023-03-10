@@ -13,7 +13,13 @@ class ImitationObjective(AbstractObjective):
     Objective that drives the model to imitate the signals from expert behaviors/trajectories.
     """
 
-    def __init__(self, scenario_type_loss_weighting: Dict[str, float], weight: float = 1.0):
+    def __init__(
+        self,
+        scenario_type_loss_weighting: Dict[str, float],
+        weight: float = 1.0,
+        xy_weight: float = 1.0,
+        heading_weight: float = 1.0,
+    ):
         """
         Initializes the class
 
@@ -25,6 +31,8 @@ class ImitationObjective(AbstractObjective):
         self._fn_xy = torch.nn.modules.loss.MSELoss(reduction='none')
         self._fn_heading = torch.nn.modules.loss.L1Loss(reduction='none')
         self._scenario_type_loss_weighting = scenario_type_loss_weighting
+        self._xy_weight = xy_weight
+        self._heading_weight = heading_weight
 
     def name(self) -> str:
         """
@@ -64,5 +72,6 @@ class ImitationObjective(AbstractObjective):
         # Assert that broadcasting was done correctly
         assert weighted_xy_loss.size() == predicted_trajectory.xy.size()
         assert weighted_heading_loss.size() == predicted_trajectory.heading.size()
-
-        return self._weight * (torch.mean(weighted_xy_loss) + torch.mean(weighted_heading_loss))
+        xy_loss = torch.mean(weighted_xy_loss)
+        heading_loss = torch.mean(weighted_heading_loss)
+        return self._weight * (self._xy_weight * xy_loss + self._heading_weight * heading_loss)

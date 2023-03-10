@@ -79,9 +79,19 @@ def compute_or_load_feature(
             file_name.parent.mkdir(parents=True, exist_ok=True)
             feature_stored_sucessfully = storing_mechanism.store_computed_feature_to_folder(file_name, feature)
     else:
-        # In case the feature exists in the cache, load it
         logger.debug(f"Loading feature: {file_name} from a file...")
-        feature = storing_mechanism.load_computed_feature_from_folder(file_name, builder.get_feature_type())
+        try:
+            feature = storing_mechanism.load_computed_feature_from_folder(file_name, builder.get_feature_type())
+        except Exception:
+            if isinstance(builder, AbstractFeatureBuilder):
+                feature = builder.get_features_from_scenario(scenario, iteration)
+            elif isinstance(builder, AbstractTargetBuilder):
+                feature = builder.get_targets(scenario)
+            # If caching is enabled, store the feature
+            if feature.is_valid and cache_path_available:
+                logger.debug(f"Saving feature: {file_name} to a file...")
+                file_name.parent.mkdir(parents=True, exist_ok=True)
+                feature_stored_sucessfully = storing_mechanism.store_computed_feature_to_folder(file_name, feature)
         assert feature.is_valid, 'Invalid feature loaded from cache!'
 
     return (
