@@ -44,9 +44,11 @@ def compute_or_load_feature(
         else None
     )
 
+    builder_force_recompute = getattr(builder, 'force_recompute', False)
+
     # If feature recomputation is desired or cached file doesnt exists, compute the feature
     need_to_compute_feature = (
-        force_feature_computation or not cache_path_available or not storing_mechanism.exists_feature_cache(file_name)
+        force_feature_computation or not cache_path_available or not storing_mechanism.exists_feature_cache(file_name) or builder_force_recompute
     )
     feature_stored_sucessfully = False
     if need_to_compute_feature:

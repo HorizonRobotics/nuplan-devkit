@@ -5,8 +5,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 import torch
 from omegaconf import DictConfig
 
-from nuplan.planning.training.modeling.closed_loop_utilities.abstract_training_controller import \
-    AbstractTrainingController
 from nuplan.planning.training.modeling.metrics.planning_metrics import \
     AbstractTrainingMetric
 from nuplan.planning.training.modeling.objectives.abstract_objective import \
@@ -20,6 +18,8 @@ from nuplan.planning.training.modeling.types import (FeaturesType,
                                                      TargetsType)
 
 from nuplan_extent.planning.training.modeling.sequential_utilities.feature_cache import FeatureCacheContainer
+from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
+    AbstractTrainingController
 from .lightning_module_wrapper import LightningModuleWrapper
 
 logger = logging.getLogger(__name__)
