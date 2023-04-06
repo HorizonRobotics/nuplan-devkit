@@ -8,6 +8,7 @@ params:
   num_workers: 8  # number of dataloader workers
   pin_memory: ${gpu}  # allocate dataloader examples in a page-locked memory for faster host-to-device transfer
   drop_last: true  # drop the last examples if the batch is not complete
-  sequential_train: true
-  sequential_val: true
-  sequential_test: true
+  sequential_train: true  # must be True for closed-loop and sequential training
+  sequential_val: true  # must be True for sequential validation
+  sequential_test: true  # must be True for sequential testing
+  trim_scenario_end: true  # trim scenario max len at the end for NuScenes and Carla, should be False for Nuplan

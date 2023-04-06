@@ -58,7 +58,9 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
         self._token2scenario = {i.token: i for i in scenarios}
         self._scenario_max_len = min(
             [i.get_number_of_iterations() for i in scenarios]
-        )  - scenarios[0].total_steps
+        )
+        if getattr(scenarios[0], 'trim_scenario_end', False):
+            self._scenario_max_len -= scenarios[0].total_steps
         self._length = self._scenario_max_len * len(scenarios)
         self._batch_size = batch_size
 

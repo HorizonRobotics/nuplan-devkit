@@ -86,8 +86,6 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
 
         predictions = self.forward(features)
         objectives = self._compute_objectives(predictions, targets, scenarios)
-        # for k, v in objectives.items():
-        #     print(k, v)
         metrics = self._compute_metrics(predictions, targets)
         loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
 
@@ -172,6 +170,9 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
 
     def on_epoch_start(self) -> None:
         # Ensures all CUDA tensors are recycled
-        if self._token2state is not None:
+        if not self._token2state:
             logger.info("Resetting _token2state before epoch starts.")
             self._token2state.clear()
+        if not self._token2cache:
+            logger.info("Resetting _token2cache before epoch starts.")
+            self._token2cache.clear()

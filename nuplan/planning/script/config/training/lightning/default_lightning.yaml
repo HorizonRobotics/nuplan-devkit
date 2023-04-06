@@ -42,8 +42,6 @@ trainer:
     sync_batchnorm: false  # enable synchronization between batchnorm layers across all GPUs
     deterministic: false  # If true enables cudnn.deterministic. Might make your system slower, but ensures reproducibility
 
-    profiler: simple
-
   overfitting:
     enable: false  # run an overfitting test instead of training
 
