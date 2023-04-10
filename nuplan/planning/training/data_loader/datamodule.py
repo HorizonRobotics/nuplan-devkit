@@ -10,7 +10,7 @@ from torch.utils.data.sampler import WeightedRandomSampler
 
 from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
 from nuplan.planning.training.data_augmentation.abstract_data_augmentation import AbstractAugmentor
-from nuplan.planning.training.data_loader.new_closed_loop_scenario_dataset import ClosedLoopScenarioDatasetV2, ClosedLoopScenarioDatasetV3
+from nuplan.planning.training.data_loader.closed_loop_scenario_dataset import ClosedLoopScenarioDatasetV2, ClosedLoopScenarioDatasetV3
 from nuplan.planning.training.data_loader.distributed_sampler_wrapper import DistributedSamplerWrapper
 from nuplan.planning.training.data_loader.scenario_dataset import ScenarioDataset
 from nuplan.planning.training.data_loader.splitter import AbstractSplitter
@@ -46,6 +46,13 @@ def create_dataset(
     # Sample the desired fraction from the total samples
     num_keep = int(len(samples) * dataset_fraction)
     selected_scenarios = random.sample(samples, num_keep)
+    
+    # manually duplicate scenarios if there is only one scenario(for DDP)
+    # if len(selected_scenarios) == 1:
+    #     import copy
+    #     for i in range(15):
+    #         s = copy.deepcopy(selected_scenarios[0])
+    #         selected_scenarios.append(s)
 
     if closed_loop_batch_size is not None:
         logger.info(f"Creating closed-loop dataset...")
@@ -116,7 +123,6 @@ class DataModule(pl.LightningDataModule):
         scenario_type_sampling_weights: DictConfig,
         worker: WorkerPool,
         augmentors: Optional[List[AbstractAugmentor]] = None,
-        is_closed_loop: Optional[bool] = False,
     ) -> None:
         """
         Initialize the class.
@@ -166,8 +172,16 @@ class DataModule(pl.LightningDataModule):
         # Worker for multiprocessing to speed up initialization of datasets
         self._worker = worker
 
-        # Is closed loop
-        self._is_closed_loop = is_closed_loop
+        # sequential dataset
+        self._sequential_train = self._dataloader_params.get('sequential_train', False)
+        self._sequential_val = self._dataloader_params.get('sequential_val', False)
+        self._sequential_test = self._dataloader_params.get('sequential_test', False)
+        if self._sequential_train:
+            del self._dataloader_params.sequential_train
+        if self._sequential_val:
+            del self._dataloader_params.sequential_val
+        if self._sequential_test:
+            del self._dataloader_params.sequential_test
 
     @property
     def feature_and_targets_builder(self) -> FeaturePreprocessor:
@@ -189,25 +203,41 @@ class DataModule(pl.LightningDataModule):
             assert len(train_samples) > 0, 'Splitter returned no training samples'
 
             self._train_set = create_dataset(
-                train_samples, 
-                self._feature_preprocessor, 
-                self._train_fraction, 
-                "train", 
-                self._augmentors, 
-                self._dataloader_params.batch_size if self._is_closed_loop else None
+                train_samples,
+                self._feature_preprocessor,
+                self._train_fraction,
+                "train",
+                self._augmentors,
+                self._dataloader_params.batch_size if self._sequential_train else None
             )
 
             # Validation Dataset
             val_samples = self._splitter.get_val_samples(self._all_samples, self._worker)
             assert len(val_samples) > 0, 'Splitter returned no validation samples'
 
-            self._val_set = create_dataset(val_samples, self._feature_preprocessor, self._val_fraction, "validation")
+            val_batch_size = self._dataloader_params.batch_size if self._sequential_val else None
+            self._val_set = create_dataset(
+                val_samples,
+                self._feature_preprocessor,
+                self._val_fraction,
+                "validation",
+                None,
+                val_batch_size,
+            )
         elif stage == 'test':
             # Testing Dataset
             test_samples = self._splitter.get_test_samples(self._all_samples, self._worker)
             assert len(test_samples) > 0, 'Splitter returned no test samples'
 
-            self._test_set = create_dataset(test_samples, self._feature_preprocessor, self._test_fraction, "test")
+            test_batch_size = self._dataloader_params.batch_size if self._sequential_test else None
+            self._test_set = create_dataset(
+                test_samples,
+                self._feature_preprocessor,
+                self._test_fraction,
+                "test",
+                None,
+                test_batch_size,
+            )
         else:
             raise ValueError(f'Stage must be one of ["fit", "test"], got ${stage}.')
 
@@ -237,7 +267,7 @@ class DataModule(pl.LightningDataModule):
         else:
             weighted_sampler = None
 
-        if self._is_closed_loop:
+        if self._sequential_train:
             return torch.utils.data.DataLoader(
                 dataset=self._train_set,
                 **self._dataloader_params,
@@ -265,9 +295,22 @@ class DataModule(pl.LightningDataModule):
         if self._val_set is None:
             raise DataModuleNotSetupError
 
-        return torch.utils.data.DataLoader(
-            dataset=self._val_set, **self._dataloader_params, collate_fn=FeatureCollate()
-        )
+        if self._sequential_val:
+            return torch.utils.data.DataLoader(
+                dataset=self._val_set,
+                **self._dataloader_params,
+                sampler=torch.utils.data.distributed.DistributedSampler(
+                    self._val_set,
+                    shuffle=False,
+                ),
+                collate_fn=FeatureCollate(),
+            )
+        else:
+            return torch.utils.data.DataLoader(
+                dataset=self._val_set,
+                collate_fn=FeatureCollate(),
+                **self._dataloader_params,
+            )
 
     def test_dataloader(self) -> torch.utils.data.DataLoader:
         """
@@ -278,9 +321,22 @@ class DataModule(pl.LightningDataModule):
         if self._test_set is None:
             raise DataModuleNotSetupError
 
-        return torch.utils.data.DataLoader(
-            dataset=self._test_set, **self._dataloader_params, collate_fn=FeatureCollate()
-        )
+        if self._sequential_test:
+            return torch.utils.data.DataLoader(
+                dataset=self._test_set,
+                **self._dataloader_params,
+                sampler=torch.utils.data.distributed.DistributedSampler(
+                    self._test_set,
+                    shuffle=False,
+                ),
+                collate_fn=FeatureCollate()
+            )
+        else:
+            return torch.utils.data.DataLoader(
+                dataset=self._test_set,
+                collate_fn=FeatureCollate(),
+                **self._dataloader_params,
+            )
 
     def transfer_batch_to_device(
         self, batch: Tuple[FeaturesType, ...], device: torch.device
