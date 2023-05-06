@@ -38,10 +38,11 @@ def update_config_for_training(cfg: DictConfig) -> None:
         cfg.data_loader.params.num_workers = 0
 
     if cfg.gpu and torch.cuda.is_available():
-        cfg.lightning.trainer.params.gpus = -1
+        if cfg.lightning.trainer.params.devices == "auto": 
+            cfg.lightning.trainer.params.devices = -1
     else:
-        cfg.lightning.trainer.params.gpus = None
-        cfg.lightning.trainer.params.accelerator = None
+        cfg.lightning.trainer.params.devices="auto"
+        cfg.lightning.trainer.params.accelerator = "auto"
         cfg.lightning.trainer.params.precision = 32
 
     # Save all interpolations and remove keys that were only used for interpolation and have no further use.
