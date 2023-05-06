@@ -1,9 +1,13 @@
 import logging
 from collections import defaultdict
+import os
 from pathlib import Path
-from typing import Dict, List, Set, cast
+from typing import Dict, List, Set, cast, Optional
 
+from multiprocessing import Pool
 from omegaconf import DictConfig
+import pandas
+from tqdm import tqdm
 
 from nuplan.common.utils.s3_utils import check_s3_path_exists, expand_s3_dir, get_cache_metadata_paths
 from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
@@ -63,7 +67,7 @@ def get_s3_scenario_cache(
     return scenario_cache_paths
 
 
-def get_local_scenario_cache(cache_path: str, feature_names: Set[str]) -> List[Path]:
+def get_local_scenario_cache(cache_path: str, feature_names: Set[str], cache_metadata_path: Optional[str]=None, closed_loop_cache: bool=False) -> List[Path]:
     """
     Get a list of cached scenario paths from a local cache.
     :param cache_path: Root path of the local cache dir.
@@ -74,20 +78,25 @@ def get_local_scenario_cache(cache_path: str, feature_names: Set[str]) -> List[P
     assert cache_dir.exists(), f'Local cache {cache_dir} does not exist!'
     assert any(cache_dir.iterdir()), f'No files found in the local cache {cache_dir}!'
 
-    candidate_scenario_dirs = []
-    for log_dir in cache_dir.iterdir():
-        for type_dir in log_dir.iterdir():
-            if type_dir.is_file():
-                    continue
-            for path in type_dir.iterdir():
-                    candidate_scenario_dirs.append(path)
+    if cache_metadata_path is not None:
+        cache_metadata_file = Path(cache_metadata_path)
+        assert cache_metadata_file.suffix == '.csv', f"{cache_metadata_file} is not a CSV file."
+        logger.info(f"Loading from {cache_metadata_file}...")
+        csv = pandas.read_csv(cache_metadata_file)
+        if closed_loop_cache:
+            candidate_scenario_dirs = list(set([Path(i).parent.parent for i in csv['file_name'].tolist()]))
+        else:
+            candidate_scenario_dirs = list(set([Path(i).parent for i in csv['file_name'].tolist()]))
+    else:
+        candidate_scenario_dirs = [path for log_dir in cache_dir.iterdir() for type_dir in log_dir.iterdir() for path in type_dir.iterdir()]
 
     # Keep only dir paths that contains all required feature names
-    scenario_cache_paths = [
-        path
-        for path in candidate_scenario_dirs
-        if not (feature_names - {feature_name.stem for feature_name in path.iterdir()})
-    ]
+    # scenario_cache_paths = [
+    #     path
+    #     for path in candidate_scenario_dirs
+    #     if not (feature_names - {feature_name.stem for feature_name in path.iterdir()})
+    # ]
+    scenario_cache_paths = candidate_scenario_dirs
 
     return scenario_cache_paths
 
@@ -102,7 +111,9 @@ def extract_scenarios_from_cache(
     :param model: NN model used for training.
     :return: List of extracted scenarios.
     """
+    logger.info("Extracting scenarios from cache...")
     cache_path = str(cfg.cache.cache_path)
+    cache_metadata_path = str(cfg.cache.cache_metadata_path) if cfg.cache.cache_metadata_path is not None else None
 
     # Find all required feature/target names to load from cache
     feature_builders = model.get_list_of_required_feature()
@@ -113,7 +124,7 @@ def extract_scenarios_from_cache(
     scenario_cache_paths = (
         get_s3_scenario_cache(cache_path, feature_names, worker)
         if cache_path.startswith('s3://')
-        else get_local_scenario_cache(cache_path, feature_names)
+        else get_local_scenario_cache(cache_path, feature_names, cache_metadata_path, cfg.closed_loop)
     )
 
     def filter_scenario_cache_paths_by_scenario_type(paths: List[Path]) -> List[Path]:
@@ -152,6 +163,7 @@ def extract_scenarios_from_dataset(cfg: DictConfig, worker: WorkerPool) -> List[
     :param worker: Worker to submit tasks which can be executed in parallel.
     :return: List of extracted scenarios.
     """
+    logger.info("Extracting scenarios from dataset...")
     scenario_builder = build_scenario_builder(cfg)
     scenario_filter = build_scenario_filter(cfg.scenario_filter)
     scenarios: List[AbstractScenario] = scenario_builder.get_scenarios(scenario_filter, worker)

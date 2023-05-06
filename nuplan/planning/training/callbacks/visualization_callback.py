@@ -126,14 +126,14 @@ class VisualizationCallback(pl.Callback):
 
         tag = f'{prefix}_visualization_{batch_idx}'
 
-        for logger in loggers:
-            if isinstance(logger, torch.utils.tensorboard.writer.SummaryWriter):
-                logger.add_images(
-                    tag=tag,
-                    img_tensor=torch.from_numpy(image_batch),
-                    global_step=training_step,
-                    dataformats='NHWC',
-                )
+        # for logger in loggers:
+        if isinstance(loggers, torch.utils.tensorboard.writer.SummaryWriter):
+            loggers.add_images(
+                tag=tag,
+                img_tensor=torch.from_numpy(image_batch),
+                global_step=training_step,
+                dataformats='NHWC',
+            )
 
     def _get_images_from_raster_features(
         self, features: FeaturesType, targets: TargetsType, predictions: TargetsType

@@ -56,6 +56,7 @@ class LightningModuleWrapper(pl.LightningModule):
         self.lr_scheduler = lr_scheduler
         self.warm_up_lr_scheduler = warm_up_lr_scheduler
         self.objective_aggregate_mode = objective_aggregate_mode
+        self.batch_size=batch_size
 
         # Validate metrics objectives and model
         model_targets = {builder.get_feature_unique_name() for builder in model.get_list_of_computed_target()}
@@ -126,13 +127,13 @@ class LightningModuleWrapper(pl.LightningModule):
         :param prefix: prefix prepended at each artifact's name
         :param loss_name: name given to the loss for logging
         """
-        self.log(f'loss/{prefix}_{loss_name}', loss)
+        self.log(f'loss/{prefix}_{loss_name}', loss, batch_size=self.batch_size)
 
         for key, value in objectives.items():
-            self.log(f'objectives/{prefix}_{key}', value)
+            self.log(f'objectives/{prefix}_{key}', value, batch_size=self.batch_size)
 
         for key, value in metrics.items():
-            self.log(f'metrics/{prefix}_{key}', value)
+            self.log(f'metrics/{prefix}_{key}', value, batch_size=self.batch_size)
 
     def training_step(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], batch_idx: int) -> torch.Tensor:
         """
