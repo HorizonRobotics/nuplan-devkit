@@ -12,15 +12,25 @@ def interpolate_points(coords: torch.Tensor, max_points: int, interpolation: str
     :return: Coordinate points interpolated to max_points size.
     :raise ValueError: If coordinates dimensions are not valid.
     """
-    if len(coords.shape) != 2 or coords.shape[1] != 2:
-        raise ValueError(f"Unexpected coords shape: {coords.shape}. Expected shape: (*, 2)")
+    if len(coords.shape) != 2 or coords.shape[1] not in [2, 4]:
+        raise ValueError(f"Unexpected coords shape: {coords.shape}.")
 
     x_coords = coords[:, 0].unsqueeze(0).unsqueeze(0)
     y_coords = coords[:, 1].unsqueeze(0).unsqueeze(0)
+    if coords.shape[1] == 4:
+        heading = coords[:, 2].unsqueeze(0).unsqueeze(0)
+        speed = coords[:, 3].unsqueeze(0).unsqueeze(0)
     align_corners = True if interpolation == 'linear' else None
     x_coords = torch.nn.functional.interpolate(x_coords, max_points, mode=interpolation, align_corners=align_corners)
     y_coords = torch.nn.functional.interpolate(y_coords, max_points, mode=interpolation, align_corners=align_corners)
-    coords = torch.stack((x_coords, y_coords), dim=-1).squeeze()
+    if coords.shape[1] == 4:
+        heading = torch.nn.functional.interpolate(heading, max_points, mode=interpolation, align_corners=align_corners)
+        speed = torch.nn.functional.interpolate(speed, max_points, mode=interpolation, align_corners=align_corners)
+
+    if coords.shape[1] == 4:
+        coords = torch.stack((x_coords, y_coords, heading, speed), dim=-1).squeeze()
+    else:
+        coords = torch.stack((x_coords, y_coords), dim=-1).squeeze()
 
     return coords
 
@@ -58,7 +68,11 @@ def convert_feature_layer_to_fixed_size(
         )
 
     # trim or zero-pad elements to maintain fixed size
-    coords_tensor = torch.zeros((max_elements, max_points, 2), dtype=torch.float64)
+    try:
+        dim_coords = feature_coords[0].shape[-1]
+    except:
+        dim_coords = 2
+    coords_tensor = torch.zeros((max_elements, max_points, dim_coords), dtype=torch.float64)
     avails_tensor = torch.zeros((max_elements, max_points), dtype=torch.bool)
     tl_data_tensor = (
         torch.zeros((max_elements, max_points, traffic_light_encoding_dim), dtype=torch.float32)

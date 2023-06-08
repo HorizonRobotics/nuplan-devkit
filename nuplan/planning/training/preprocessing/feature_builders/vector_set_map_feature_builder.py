@@ -14,6 +14,7 @@ from nuplan.planning.training.preprocessing.feature_builders.vector_builder_util
     MapObjectPolylines,
     VectorFeatureLayer,
     get_neighbor_vector_set_map,
+    LaneSpeeds
 )
 from nuplan.planning.training.preprocessing.features.abstract_model_feature import AbstractModelFeature, FeatureDataType
 from nuplan.planning.training.preprocessing.features.vector_set_map import VectorSetMap
@@ -75,19 +76,19 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
         return "vector_set_map"
 
     @torch.jit.unused
-    def get_features_from_scenario(self, scenario: AbstractScenario) -> VectorSetMap:
+    def get_features_from_scenario(self, scenario: AbstractScenario, iteration: int=0) -> VectorSetMap:
         """Inherited, see superclass."""
         ego_state = scenario.initial_ego_state
         ego_coords = Point2D(ego_state.rear_axle.x, ego_state.rear_axle.y)
         route_roadblock_ids = scenario.get_route_roadblock_ids()
         traffic_light_data = scenario.get_traffic_light_status_at_iteration(0)
 
-        coords, traffic_light_data = get_neighbor_vector_set_map(
+        coords, traffic_light_data, lane_speeds = get_neighbor_vector_set_map(
             scenario.map_api, self._map_features, ego_coords, self._radius, route_roadblock_ids, traffic_light_data
         )
 
         tensors, list_tensors, list_list_tensors = self._pack_to_feature_tensor_dict(
-            coords, traffic_light_data, ego_state.rear_axle
+            coords, traffic_light_data, lane_speeds, ego_state.rear_axle
         )
 
         tensor_data, list_tensor_data, list_list_tensor_data = self.scriptable_forward(
@@ -171,6 +172,7 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
         self,
         coords: Dict[str, MapObjectPolylines],
         traffic_light_data: Dict[str, LaneSegmentTrafficLightData],
+        speeds: LaneSpeeds,
         anchor_state: StateSE2,
     ) -> Tuple[Dict[str, torch.Tensor], Dict[str, List[torch.Tensor]], Dict[str, List[List[torch.Tensor]]]]:
         """
@@ -207,6 +209,14 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
                 for element_tl_data in traffic_light_data[feature_name].to_vector():
                     list_feature_tl_data.append(torch.tensor(element_tl_data, dtype=torch.float32))
                 list_tensor_data[f"traffic_light_data.{feature_name}"] = list_feature_tl_data
+
+        # Pack speed info
+        speed_tensor = torch.tensor(speeds.speeds, dtype=torch.float32)
+        assert speed_tensor.shape[0] == len(list_tensor_data["coords.LANE"])
+        for i in range(speed_tensor.shape[0]):
+            list_tensor_data["coords.LANE"][i] = torch.nn.functional.pad(
+                list_tensor_data["coords.LANE"][i], (0, 1, 0, 0), mode="constant", value=speed_tensor[i]
+            )
 
         return (
             tensor_data,

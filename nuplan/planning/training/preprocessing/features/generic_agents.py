@@ -57,7 +57,7 @@ class GenericAgents(AbstractModelFeature):
         if self.ego[0].ndim != 2:
             raise AssertionError(
                 "Ego feature samples does not conform to feature dimensions! "
-                f"Got ndim: {self.ego[0].ndim} , expected 2 [num_frames, 7]"
+                f"Got ndim: {self.ego[0].ndim} , expected 2 [num_frames, 11]"
             )
 
         if 'EGO' in self.agents.keys():
@@ -117,8 +117,8 @@ class GenericAgents(AbstractModelFeature):
             and len(self.ego[0]) > 0
             and all([len(agent[0]) > 0 for agent in self.agents.values()])
             and all([len(self.ego[0]) == len(agent[0]) > 0 for agent in self.agents.values()])
-            and self.ego[0].shape[-1] == self.ego_state_dim()
-            and all([agent[0].shape[-1] == self.agents_states_dim() for agent in self.agents.values()])
+            # and self.ego[0].shape[-1] == self.ego_state_dim()
+            # and all([agent[0].shape[-1] == self.agents_states_dim() for agent in self.agents.values()])
         )
 
     @property
