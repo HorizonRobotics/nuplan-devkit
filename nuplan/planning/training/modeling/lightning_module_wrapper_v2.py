@@ -217,14 +217,14 @@ class LightningModuleWrapperV2(pl.LightningModule):
                         num_corrections += 1
                         reset_sample_index.append(i)
                 else:
-                    reason = f"{self.global_rank}: Sample {i} in batch {batch_idx} reset at iter {current_iterations[i].item()}."
-                    if not dist_bound[i]: 
-                        reason = reason + f" Dist. off by {dist[i].item():.4f}m."
-                    if not rot_bound[i]:
-                        reason = reason + f" Rot. off by {rot[i].item() * 180 / math.pi:.4f} deg."
-                    reason = reason + f" Recorded iter: {self._token2state[scenario_token].current_iteration.item()}."
-                    reason = reason + f" Last reset was {self._token2state[scenario_token].num_iter_without_reset} iter ago."
-                    logger.info(reason)
+                    # reason = f"{self.global_rank}: Sample {i} in batch {batch_idx} reset at iter {current_iterations[i].item()}."
+                    # if not dist_bound[i]: 
+                    #     reason = reason + f" Dist. off by {dist[i].item():.4f}m."
+                    # if not rot_bound[i]:
+                    #     reason = reason + f" Rot. off by {rot[i].item() * 180 / math.pi:.4f} deg."
+                    # reason = reason + f" Recorded iter: {self._token2state[scenario_token].current_iteration.item()}."
+                    # reason = reason + f" Last reset was {self._token2state[scenario_token].num_iter_without_reset} iter ago."
+                    # logger.info(reason)
                     self._token2state[scenario_token].set(gt_ego_states[i], curr_iter)
                     updated_target.append(ref_traj)
                     num_corrections += 1
@@ -396,7 +396,7 @@ class LightningModuleWrapperV2(pl.LightningModule):
 
         return optimizer_dict if 'lr_scheduler' in optimizer_dict else optimizer_dict['optimizer']
 
-    def on_epoch_start(self) -> None:
+    def on_train_epoch_start(self) -> None:
         # Ensures all CUDA tensors are recycled
         if self._token2state is not None:
             logger.info("Resetting _token2state before epoch starts.")

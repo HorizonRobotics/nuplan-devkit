@@ -210,8 +210,10 @@ class GenericAgentsFeatureBuilder(ScriptableFeatureBuilder):
         for key in list_tensor_data:
             if key.startswith("generic_agents.agents."):
                 feature_name = key[len("generic_agents.agents.") :]
-                agent_features[feature_name] = [list_tensor_data[key][0].detach().numpy()]
-
+                # NOTE: original is [list_tensor_data[key][0].detach().numpy()] which 
+                # causes error of dimensions in GenericAgents post init. 
+                # Don't know why they did this.
+                agent_features[feature_name] = [list_tensor_data[key].detach().numpy()]
         return GenericAgents(ego=ego_features, agents=agent_features)
 
     @torch.jit.export

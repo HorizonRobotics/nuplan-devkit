@@ -1,21 +1,15 @@
 import logging
-import math
+import time
+from collections import deque
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
+import pdb
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import torch.nn as nn
 from hydra.utils import instantiate
-from omegaconf import DictConfig
-from torch.optim import Optimizer
-from torch.optim.lr_scheduler import OneCycleLR, _LRScheduler
-from torch.utils.data.dataloader import default_collate
-
-from nuplan.common.actor_state.ego_state import EgoState
-from nuplan.planning.script.builders.lr_scheduler_builder import \
-    build_lr_scheduler
-from nuplan.planning.script.builders.utils.utils_type import is_target_type
+from nuplan_extent.planning.training.closed_loop.batched_nonlinear_smoother import \
+    BatchedNonLinearSmoother
 from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
     AbstractTrainingController
 from nuplan_extent.planning.training.closed_loop.raster_repainter import \
@@ -23,7 +17,16 @@ from nuplan_extent.planning.training.closed_loop.raster_repainter import \
 from nuplan_extent.planning.training.closed_loop.target_trajectory_recomputer import \
     TargetTrajectoryRecomputer
 from nuplan_extent.planning.training.closed_loop.utils.torch_util import (
-    TrainingState, get_relative_pose_matrices_to)
+    TrainingState, get_heading, get_relative_pose_matrices_to,
+    replace_out_of_bound_matrices_with_identity)
+from omegaconf import DictConfig
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.optimizer import Optimizer
+
+from nuplan.common.actor_state.ego_state import EgoState
+from nuplan.planning.script.builders.lr_scheduler_builder import \
+    build_lr_scheduler
 from nuplan.planning.training.modeling.metrics.planning_metrics import \
     AbstractTrainingMetric
 from nuplan.planning.training.modeling.objectives.abstract_objective import \
@@ -81,7 +84,7 @@ class LightningModuleWrapperV3(pl.LightningModule):
         :param objective_aggregate_mode: how should different objectives be combined, can be 'sum', 'mean', and 'max'.
         """
         super().__init__()
-        self.save_hyperparameters(ignore=["model"])
+        self.save_hyperparameters(ignore=["model", "ego_controller"])
 
         self.model = model
         self.objectives = objectives
@@ -119,11 +122,17 @@ class LightningModuleWrapperV3(pl.LightningModule):
         if self._ego_controller is not None:
             self._ego_controller.initialize(device=self.device)
             self.is_closed_loop_model = True
-            self._trajectory_smoother = TargetTrajectoryRecomputer(
-                int(self._future_horizon / self._step_interval),
-                self._step_interval
+            # self._trajectory_smoother = TargetTrajectoryRecomputer(
+            #     int(self._future_horizon / self._step_interval),
+            #     self._step_interval
+            # )
+            self._trajectory_smoother = BatchedNonLinearSmoother(
+                trajectory_len=int(self._future_horizon / self._step_interval),
+                dt=self._step_interval,
+                batch_size=self.batch_size,
+                device=self.device
             )
-            self._token2state = {}
+            self._token2state: Dict[str, TrainingState] = {}
             self._updated_flag = False
     
     def on_train_start(self) -> None:
@@ -136,12 +145,16 @@ class LightningModuleWrapperV3(pl.LightningModule):
         scenario_tokens = [i.token for i in scenarios]
         gt_ego_states = features["ego_state"]
         # Add unseen scenario, or update a seen scenario
-        to_be_updated_tokens = []
-        incoming_time_points = []
+        to_be_updated_tokens, incoming_gt_ego_states = [], []
         for token, iteration, ego_state in zip(scenario_tokens, current_iterations, gt_ego_states):
             if token not in self._token2state:
                 # Unseen, input data and controller are at the same time.
-                training_state = TrainingState(state=ego_state, last_prediction=None, current_iteration=iteration.item())
+                training_state = TrainingState(
+                    token=token,
+                    state=deque([ego_state], maxlen=10), 
+                    last_prediction=None, 
+                    current_iteration=iteration.item()
+                )
                 self._token2state[token] = training_state
             else:
                 # Previously seen, input data must be 1 step ahead of controller.
@@ -151,14 +164,13 @@ class LightningModuleWrapperV3(pl.LightningModule):
                     f"{iteration.item()}, recorded iter is "
                     f"{self._token2state[token].current_iteration}")
                 to_be_updated_tokens.append(token)
-                incoming_time_points.append(ego_state.time_point)
+                incoming_gt_ego_states.append(ego_state)
         to_be_updated_states = [self._token2state[i] for i in to_be_updated_tokens]
         assert len(to_be_updated_states) == 0 or all([i.last_prediction is not None for i in to_be_updated_states])
         if len(to_be_updated_states) > 0:
-            updated_states = self._ego_controller.update(to_be_updated_states, incoming_time_points)
-
-            for token, updated_state in zip(to_be_updated_tokens, updated_states):
-                self._token2state[token] = updated_state
+            updated_states = self._ego_controller.update(to_be_updated_states, incoming_gt_ego_states)
+            for updated_state in updated_states:
+                self._token2state[updated_state.token] = updated_state
 
         self._updated_flag = True
 
@@ -175,6 +187,7 @@ class LightningModuleWrapperV3(pl.LightningModule):
         """
         features, targets, scenarios = batch
         additional_logged_objects = {}
+        pose_matrices, gt_ego_states, is_in_bound = None, None, None
         # Closed-loop extra computations
         if self.is_closed_loop_model and prefix == 'train':
             current_iterations = features["current_iteration"] # int tensor
@@ -185,68 +198,49 @@ class LightningModuleWrapperV3(pl.LightningModule):
             if not self._updated_flag:
                 self.update_controllers(batch)
  
-            # Add unseen scenario, or update a seen scenario
-            for token, iteration, ego_state in zip(scenario_tokens, current_iterations, gt_ego_states):
+            # Sanity check
+            for token, iteration in zip(scenario_tokens, current_iterations):
                 iter_diff = iteration - self._token2state[token].current_iteration
                 if iter_diff != 0:
                     logger.warning(f"rank {self.local_rank}, {token} input iter is "
                     f"{iteration.item()}, recorded iter is "
-                    f"{self._token2state[token].current_iteration}")
-                    # self._token2state[token].update(ego_state.time_point)
-                        # TODO: not sure what to do here if time not synced.
+                    f"{self._token2state[token].current_iteration}, expected diffrence must be 0.")
+                    raise RuntimeError("Input sequence is not in correct order.")
 
             # ====== At this point, time must be aligned ======
 
             # Gather absoluate states (both cl and gt)
             cl_pose_matrices = _get_batched_pose_matrices(
-                [self._token2state[i].state for i in scenario_tokens]
-            ).to(self.device)
-            gt_pose_matrices = _get_batched_pose_matrices(gt_ego_states).to(self.device)
+                [self._token2state[i].state[-1] for i in scenario_tokens]
+            ).to(self.device).to(self.dtype)
+            gt_pose_matrices = _get_batched_pose_matrices(gt_ego_states).to(self.device).to(self.dtype)
 
             # Compute relative poses
             pose_matrices = get_relative_pose_matrices_to(cl_pose_matrices, gt_pose_matrices)
+            pose_matrices, is_in_bound = replace_out_of_bound_matrices_with_identity(pose_matrices)
+ 
             additional_logged_objects['closed_loop_states'] = cl_pose_matrices.clone()
             additional_logged_objects['gt_states'] = gt_pose_matrices.clone()
             additional_logged_objects['relative_poses'] = pose_matrices.clone()
-            new_raster, dist_bound, rot_bound, dist, rot= repaint_raster(features["raster"].data, pose_matrices)
+            new_raster = repaint_raster(features["raster"].data, pose_matrices)
+
             # recompute trajectory
-            updated_target, reset_sample_index, num_corrections = [], [], 0
-            for i, scenario_token in enumerate(scenario_tokens):
-                ref_traj = targets["trajectory"].data[i]
-                curr_iter = current_iterations[i]
-                if dist_bound[i] and rot_bound[i]:
-                    speed = self._token2state[scenario_token].state.dynamic_car_state.speed
-                    solve_success, new_traj = self._trajectory_smoother.recompute(
-                        ref_traj,
-                        pose_matrices[i, ...],
-                        speed
-                    )
-                    if solve_success:
-                        updated_target.append(new_traj)
-                    else:
-                        sample_forced_reset_count = self._token2state[scenario_token].forced_reset_count
-                        self._token2state[scenario_token] = TrainingState(gt_ego_states[i], None, curr_iter, sample_forced_reset_count+1)
-                        new_raster[i] = features["raster"].data[i]
-                        updated_target.append(ref_traj)
-                        num_corrections += 1
-                        reset_sample_index.append(i)
-                else:
-                    # reason = f"{self.global_rank}: Sample {i} in batch {batch_idx} reset at iter {current_iterations[i].item()}."
-                    # if not dist_bound[i]: 
-                    #     reason = reason + f" Dist. off by {dist[i].item():.4f}m."
-                    # if not rot_bound[i]:
-                    #     reason = reason + f" Rot. off by {rot[i].item() * 180 / math.pi:.4f} deg."
-                    # reason = reason + f" Recorded iter: {self._token2state[scenario_token].current_iteration}."
-                    # reason = reason + f" Last reset was {self._token2state[scenario_token].num_iter_without_reset} iter ago."
-                    # logger.info(reason)
-                    sample_forced_reset_count = self._token2state[scenario_token].forced_reset_count
-                    self._token2state[scenario_token] = TrainingState(gt_ego_states[i], None, curr_iter, sample_forced_reset_count+1)
-                    updated_target.append(ref_traj)
-                    num_corrections += 1
-                    reset_sample_index.append(i)
+            reset_sample_index, num_corrections = [], 0
+            x = pose_matrices[:, 0, 2]
+            y = pose_matrices[:, 1, 2]
+            h = get_heading(pose_matrices[:, 1, 0], pose_matrices[:, 0, 0])
+            v = torch.tensor([self._token2state[i].state[-1].dynamic_car_state.speed for i in scenario_tokens], device=self.device)
+            x_curr = torch.stack([x, y, h, v], dim=-1)
+            batch_ref_traj = torch.nn.functional.pad(
+                targets["trajectory"].data,
+                pad=(0,0,1,0),
+                mode='constant',
+                value=0.
+            )
+            updated_target = self._trajectory_smoother.solve(x_curr, batch_ref_traj)
             
             features["raster"].data = new_raster
-            targets["trajectory"].data = default_collate(updated_target)
+            targets["trajectory"].data = updated_target
             additional_logged_objects["batch_corrections"] = num_corrections
             additional_logged_objects["reset_sample_index"] = reset_sample_index
 
@@ -270,12 +264,17 @@ class LightningModuleWrapperV3(pl.LightningModule):
                 scenario_token = scenario_tokens[i]
                 scenario_trajectory = trajectory_per_scene[i]
                 self._token2state[scenario_token].last_prediction = scenario_trajectory
+                # reset training state if out of bound
+                if not is_in_bound[i]:
+                    self._token2state[scenario_token].state = deque([gt_ego_states[i]], maxlen=10)
+                    self._token2state[scenario_token].forced_reset_count += 1
+                    self._token2state[scenario_token].num_iter_without_reset = 0
 
         self._log_step(loss, objectives, metrics, prefix, batch_idx=batch_idx)
 
         return_dict = {
             "loss": loss, 
-            "trajectory": predictions["trajectory"],
+            "trajectory": predictions["multimode_trajectory_6"],
         }
         return_dict.update(additional_logged_objects)
         self._updated_flag = False

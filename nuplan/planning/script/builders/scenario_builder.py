@@ -92,11 +92,12 @@ def get_local_scenario_cache(cache_path: str, feature_names: Set[str], cache_met
         candidate_scenario_dirs = [path for log_dir in cache_dir.iterdir() for type_dir in log_dir.iterdir() for path in type_dir.iterdir()]
 
     # Keep only dir paths that contains all required feature names
-    scenario_cache_paths = [
-        path
-        for path in candidate_scenario_dirs
-        if not (feature_names - {feature_name.stem for feature_name in path.iterdir()})
-    ]
+    # scenario_cache_paths = [
+    #     path
+    #     for path in candidate_scenario_dirs
+    #     if not (feature_names - {feature_name.stem for feature_name in path.iterdir()})
+    # ]
+    scenario_cache_paths = candidate_scenario_dirs
 
     return scenario_cache_paths
 
