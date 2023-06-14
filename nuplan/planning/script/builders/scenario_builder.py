@@ -6,17 +6,21 @@ from typing import Dict, List, Optional, Set, cast
 import pandas
 from omegaconf import DictConfig
 
-from nuplan.common.utils.s3_utils import check_s3_path_exists, expand_s3_dir, get_cache_metadata_paths
+from nuplan.common.utils.s3_utils import (check_s3_path_exists, expand_s3_dir,
+                                          get_cache_metadata_paths)
 from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
-from nuplan.planning.scenario_builder.cache.cached_scenario import CachedScenario
-from nuplan.planning.script.builders.scenario_building_builder import build_scenario_builder
-from nuplan.planning.script.builders.scenario_filter_builder import build_scenario_filter
+from nuplan.planning.scenario_builder.cache.cached_scenario import \
+    CachedScenario
+from nuplan.planning.script.builders.scenario_building_builder import \
+    build_scenario_builder
+from nuplan.planning.script.builders.scenario_filter_builder import \
+    build_scenario_filter
 from nuplan.planning.training.experiments.cache_metadata_entry import (
-    extract_field_from_cache_metadata_entries,
-    read_cache_metadata,
-)
-from nuplan.planning.training.modeling.torch_module_wrapper import TorchModuleWrapper
-from nuplan.planning.utils.multithreading.worker_utils import WorkerPool, worker_map
+    extract_field_from_cache_metadata_entries, read_cache_metadata)
+from nuplan.planning.training.modeling.torch_module_wrapper import \
+    TorchModuleWrapper
+from nuplan.planning.utils.multithreading.worker_utils import (WorkerPool,
+                                                               worker_map)
 
 logger = logging.getLogger(__name__)
 

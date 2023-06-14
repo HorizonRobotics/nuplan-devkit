@@ -31,8 +31,8 @@ def build_callbacks(cfg: DictConfig) -> List[pl.Callback]:
             [instantiate(scheduler) for scheduler in cfg.data_augmentation_scheduler.values()]
         )
 
-    if cfg.lightning.trainer.params.gpus:
-        instantiated_callbacks.append(pl.callbacks.GPUStatsMonitor(intra_step_time=True, inter_step_time=True))
+    if cfg.lightning.trainer.params.devices:
+        instantiated_callbacks.append(pl.callbacks.DeviceStatsMonitor())
 
     logger.info('Building callbacks...DONE!')
 

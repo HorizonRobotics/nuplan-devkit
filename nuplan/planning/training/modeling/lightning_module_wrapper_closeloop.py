@@ -1,10 +1,19 @@
 import copy
+import pdb
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
+from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
+    AbstractTrainingController
+from nuplan_extent.planning.training.closed_loop.utils.torch_util import \
+    TrainingState
+from nuplan_extent.planning.training.modeling.sequential_utilities.feature_cache import \
+    FeatureCacheContainer
 from omegaconf import DictConfig
 
+from nuplan.planning.training.modeling.lightning_module_wrapper import \
+    LightningModuleWrapper
 from nuplan.planning.training.modeling.metrics.planning_metrics import \
     AbstractTrainingMetric
 from nuplan.planning.training.modeling.objectives.abstract_objective import \
@@ -16,11 +25,6 @@ from nuplan.planning.training.modeling.torch_module_wrapper import \
 from nuplan.planning.training.modeling.types import (FeaturesType,
                                                      ScenarioListType,
                                                      TargetsType)
-
-from nuplan_extent.planning.training.modeling.sequential_utilities.feature_cache import FeatureCacheContainer
-from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
-    AbstractTrainingController
-from .lightning_module_wrapper import LightningModuleWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +43,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         optimizer: Optional[DictConfig] = None,
         lr_scheduler: Optional[DictConfig] = None,
         warm_up_lr_scheduler: Optional[DictConfig] = None,
-        objective_aggregate_mode: str = 'mean',
+        objective_aggregate_mode: str = "mean",
     ) -> None:
         """
         Initializes the class.
@@ -67,12 +71,19 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         self.batch_size = batch_size
 
         # closed loop essentials
-        self._token2state: Dict[str, AbstractTrainingController] = {}  # State memory for every scenario
+        self._token2state: Dict[
+            str, TrainingState
+        ] = {}  # State memory for every scenario
 
         # sequential model essentials
         self._token2cache: Dict[str, FeatureCacheContainer] = {}
 
-    def _step(self, batch: Tuple[FeaturesType, TargetsType], prefix: str, batch_idx: int) -> Dict[str, Any]:
+    def _step(
+        self,
+        batch: Tuple[FeaturesType, TargetsType],
+        prefix: str,
+        batch_idx: int,
+    ) -> Dict[str, Any]:
         """
         Propagates the model forward and backwards and computes/logs losses and metrics.
 
@@ -87,9 +98,18 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         predictions = self.forward(features)
         objectives = self._compute_objectives(predictions, targets, scenarios)
         metrics = self._compute_metrics(predictions, targets)
-        loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
+        loss = aggregate_objectives(
+            objectives, agg_mode=self.objective_aggregate_mode
+        )
 
-        self._log_step(loss, objectives, metrics, prefix, batch_idx=batch_idx)
+        self._log_step(
+            loss,
+            objectives,
+            metrics,
+            prefix,
+            len(scenarios),
+            batch_idx=batch_idx,
+        )
 
         return_dict = {
             "loss": loss,
@@ -98,8 +118,10 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
 
         if "out_feature" in predictions:
             return_dict["out_feature"] = predictions["out_feature"].detach()
-        if 'bev_feature' in predictions:
-            return_dict["bev_feature"] = predictions["bev_feature"].to_device("cpu").detach()
+        if "bev_feature" in predictions:
+            return_dict["bev_feature"] = (
+                predictions["bev_feature"].to_device("cpu").detach()
+            )
 
         if hasattr(self, "closeloop_data"):
             return_dict.update(self.closeloop_data["logged_objects"])
@@ -111,9 +133,10 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         objectives: Dict[str, torch.Tensor],
         metrics: Dict[str, torch.Tensor],
         prefix: str,
-        loss_name: str = 'loss',
+        batch_size: int,
+        loss_name: str = "loss",
         batch_idx: int = 0,
-        **kwargs
+        **kwargs,
     ) -> None:
         """
         Logs the artifacts from a training/validation/test step.
@@ -124,19 +147,23 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param prefix: prefix prepended at each artifact's name
         :param loss_name: name given to the loss for logging
         """
-        self.log('idx', batch_idx, prog_bar=True)
-        self.log(f'loss/{prefix}_{loss_name}', loss)
+        self.log("idx", batch_idx, prog_bar=True, batch_size=batch_size)
+        self.log(f"loss/{prefix}_{loss_name}", loss, batch_size=batch_size)
 
         for key, value in objectives.items():
-            self.log(f'objectives/{prefix}_{key}', value)
+            self.log(
+                f"objectives/{prefix}_{key}", value, batch_size=batch_size
+            )
 
         for key, value in metrics.items():
-            self.log(f'metrics/{prefix}_{key}', value)
+            self.log(f"metrics/{prefix}_{key}", value, batch_size=batch_size)
 
         for key, value in kwargs.items():
-            self.log(f'{key}', value)
+            self.log(f"{key}", value, batch_size=batch_size)
 
-    def training_step(self, batch: Tuple[FeaturesType, TargetsType], batch_idx: int) -> torch.Tensor:
+    def training_step(
+        self, batch: Tuple[FeaturesType, TargetsType], batch_idx: int
+    ) -> torch.Tensor:
         """
         Step called for each batch example during training.
 
@@ -144,10 +171,12 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param batch_idx: batch's index (unused)
         :return: model's loss tensor
         """
-        return self._step(batch, 'train', batch_idx)
+        return self._step(batch, "train", batch_idx)
 
     def validation_step(
-        self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], batch_idx: int
+        self,
+        batch: Tuple[FeaturesType, TargetsType, ScenarioListType],
+        batch_idx: int,
     ) -> torch.Tensor:
         """
         Step called for each batch example during validation.
@@ -156,9 +185,13 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param batch_idx: batch's index (unused)
         :return: model's loss tensor
         """
-        return self._step(batch, 'val', batch_idx)
+        return self._step(batch, "val", batch_idx)
 
-    def test_step(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], batch_idx: int) -> torch.Tensor:
+    def test_step(
+        self,
+        batch: Tuple[FeaturesType, TargetsType, ScenarioListType],
+        batch_idx: int,
+    ) -> torch.Tensor:
         """
         Step called for each batch example during testing.
 
@@ -166,7 +199,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param batch_idx: batch's index (unused)
         :return: model's loss tensor
         """
-        return self._step(batch, 'test', batch_idx)
+        return self._step(batch, "test", batch_idx)
 
     def on_epoch_start(self) -> None:
         # Ensures all CUDA tensors are recycled
