@@ -368,7 +368,7 @@ class GenericAgents(AbstractModelFeature):
         self._validate_agent_query(agent_type, sample_idx)
         if self.agents[agent_type][sample_idx].size == 0:
             raise RuntimeError("Feature is empty!")
-        return self.get_present_agents_by_type_in_sample(agent_type, sample_idx)[:, GenericAgentFeatureIndex.length()]
+        return self.get_present_agents_by_type_in_sample(agent_type, sample_idx)[:, 5]
 
     def get_agents_length_in_sample(self, sample_idx: int) -> FeatureDataType:
         """
@@ -390,7 +390,7 @@ class GenericAgents(AbstractModelFeature):
         self._validate_agent_query(agent_type, sample_idx)
         if self.agents[agent_type][sample_idx].size == 0:
             raise RuntimeError("Feature is empty!")
-        return self.get_present_agents_by_type_in_sample(agent_type, sample_idx)[:, GenericAgentFeatureIndex.width()]
+        return self.get_present_agents_by_type_in_sample(agent_type, sample_idx)[:, 6]
 
     def get_agents_width_in_sample(self, sample_idx: int) -> FeatureDataType:
         """

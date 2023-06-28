@@ -28,6 +28,33 @@ class Color(Enum):
     PREDICTED_TRAJECTORY: Tuple[float, float, float] = (158, 63, 120)
     BASELINE_PATHS: Tuple[float, float, float] = (210, 220, 220)
 
+def _display_open_loop_metrics(
+    image: npt.NDArray[np.uint8],
+    target_trajectory: Trajectory,
+    predicted_trajectory: Trajectory
+):
+    """
+    Calculate ADE, AFE and AHE and display 
+
+    :param image: _description_
+    :param target_trajectory: _description_
+    :param predicted_trajectory: _description_
+    """
+    ade = np.abs((predicted_trajectory.data[..., :2] - target_trajectory.data[..., :2]).numpy()).mean()
+    fde = np.linalg.norm((predicted_trajectory.terminal_position - target_trajectory.terminal_position).numpy())
+    errors = np.abs((predicted_trajectory.heading - target_trajectory.heading).numpy())
+    ahe = np.arctan2(np.sin(errors), np.cos(errors)).mean()
+
+    text_ade, position_ade = f"ADE: {ade:.2f}", (10, 50)
+    text_fde, position_fde = f"FDE: {fde:.2f}", (10, 80)
+    text_ahe, position_ahe = f"AHE: {ahe:.2f}", (10, 110)
+
+    image = cv2.putText(image, text_ade, position_ade, cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+    image = cv2.putText(image, text_fde, position_fde, cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+    image = cv2.putText(image, text_ahe, position_ahe, cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+
+    return image
+
 
 def _draw_trajectory(
     image: npt.NDArray[np.uint8],
@@ -93,7 +120,7 @@ def _create_map_raster(
     # Align coordinates to map and clip them based on radius
     num_elements, num_points, _ = vector_coords.shape
     map_ortho_align = Rotation.from_euler('z', 90, degrees=True).as_matrix().astype(np.float32)
-    coords = vector_coords.reshape(num_elements * num_points, 2)
+    coords = vector_coords[..., :2].reshape(num_elements * num_points, 2)
     coords = np.concatenate((coords, np.zeros_like(coords[:, 0:1])), axis=-1)
     coords = (map_ortho_align @ coords.T).T
     coords = coords[:, :2].reshape(num_elements, num_points, 2)
@@ -252,6 +279,9 @@ def get_raster_from_vector_map_with_agents(
         _draw_trajectory(image, target_trajectory, Color.TARGET_TRAJECTORY, pixel_size)
     if predicted_trajectory is not None:
         _draw_trajectory(image, predicted_trajectory, Color.PREDICTED_TRAJECTORY, pixel_size)
+
+    if target_trajectory is not None and predicted_trajectory is not None:
+        _display_open_loop_metrics(image, target_trajectory, predicted_trajectory)
 
     return image
 

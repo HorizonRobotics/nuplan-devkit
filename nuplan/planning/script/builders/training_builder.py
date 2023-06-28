@@ -139,27 +139,8 @@ def _build_strategy(trainer_params: OmegaConf) -> Strategy:
         num_devices = trainer_params.devices
     gpus = [torch.device(f"cuda:{i}") for i in range(num_devices)]
     if strat_name == "ddp":
-        return DDPStrategy(accelerator="gpu", parallel_devices=gpus, find_unused_parameters=False)
-    elif strat_name == "ray":
-        return RayStrategy(
-            num_workers=4, 
-            num_cpus_per_worker=20,
-            use_gpu=True, 
-            resources_per_worker={"GPU": 2}
-        )
-    else:
-        raise ValueError(f"Unknown or unsupported strategy: {strat_name}. Supported are ddp, ray.")
-
-def _build_strategy(trainer_params: OmegaConf) -> Strategy:
-    strat_name = trainer_params.strategy
-    if trainer_params.devices == "auto" or trainer_params.devices == -1:
-        num_devices = torch.cuda.device_count()
-    else:
-        num_devices = trainer_params.devices
-    gpus = [torch.device(f"cuda:{i}") for i in range(num_devices)]
-    if strat_name == "ddp":
         return DDPStrategy(
-            accelerator="gpu", parallel_devices=gpus, find_unused_parameters=False
+            accelerator="gpu", parallel_devices=gpus, find_unused_parameters=True
         )
     elif strat_name == "ray":
         return RayStrategy(
