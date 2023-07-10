@@ -209,3 +209,11 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         if self._token2cache is not None:
             logger.info("Resetting _token2cache before epoch starts.")
             self._token2cache.clear()
+
+    def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        state_dict = checkpoint['state_dict']
+        for name, param in self.named_parameters():
+            if param.requires_grad and name in state_dict:
+                if param.shape != state_dict[name].shape:
+                    del state_dict[name]
+        checkpoint['state_dict'] = state_dict

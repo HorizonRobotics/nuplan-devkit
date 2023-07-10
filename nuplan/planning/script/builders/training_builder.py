@@ -104,6 +104,7 @@ def build_lightning_module(
         logger.info(f"Loading checkpoint from {cfg.checkpoint}")
         model = LightningModuleWrapperCloseloop.load_from_checkpoint(
             cfg.checkpoint,
+            strict=False,
             model=torch_module_wrapper,
             objectives=objectives,
             metrics=metrics,
