@@ -176,11 +176,11 @@ class DataModule(pl.LightningDataModule):
         self._sequential_train = self._dataloader_params.get('sequential_train', False)
         self._sequential_val = self._dataloader_params.get('sequential_val', False)
         self._sequential_test = self._dataloader_params.get('sequential_test', False)
-        if self._sequential_train:
+        if 'sequential_train' in self._dataloader_params:
             del self._dataloader_params.sequential_train
-        if self._sequential_val:
+        if 'sequential_val' in self._dataloader_params:
             del self._dataloader_params.sequential_val
-        if self._sequential_test:
+        if 'sequential_test' in self._dataloader_params:
             del self._dataloader_params.sequential_test
 
     @property

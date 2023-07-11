@@ -1,8 +1,9 @@
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Set, cast
+from typing import Dict, List, Optional, Set, cast
 
+import pandas
 from omegaconf import DictConfig
 
 from nuplan.common.utils.s3_utils import check_s3_path_exists, expand_s3_dir, get_cache_metadata_paths
@@ -63,7 +64,7 @@ def get_s3_scenario_cache(
     return scenario_cache_paths
 
 
-def get_local_scenario_cache(cache_path: str, feature_names: Set[str]) -> List[Path]:
+def get_local_scenario_cache(cache_path: str, feature_names: Set[str], cache_metadata_path: Optional[str]=None, closed_loop_cache: bool=False) -> List[Path]:
     """
     Get a list of cached scenario paths from a local cache.
     :param cache_path: Root path of the local cache dir.
@@ -74,7 +75,17 @@ def get_local_scenario_cache(cache_path: str, feature_names: Set[str]) -> List[P
     assert cache_dir.exists(), f'Local cache {cache_dir} does not exist!'
     assert any(cache_dir.iterdir()), f'No files found in the local cache {cache_dir}!'
 
-    candidate_scenario_dirs = [path for log_dir in cache_dir.iterdir() for type_dir in log_dir.iterdir() for path in type_dir.iterdir()]
+    if cache_metadata_path is not None:
+        cache_metadata_file = Path(cache_metadata_path)
+        assert cache_metadata_file.suffix == '.csv', f"{cache_metadata_file} is not a CSV file."
+        logger.info(f"Loading from {cache_metadata_file}...")
+        csv = pandas.read_csv(cache_metadata_file)
+        if closed_loop_cache:
+            candidate_scenario_dirs = list(set([Path(i).parent.parent for i in csv['file_name'].tolist()]))
+        else:
+            candidate_scenario_dirs = list(set([Path(i).parent for i in csv['file_name'].tolist()]))
+    else:
+        candidate_scenario_dirs = [path for log_dir in cache_dir.iterdir() for type_dir in log_dir.iterdir() for path in type_dir.iterdir()]
 
     # Keep only dir paths that contains all required feature names
     scenario_cache_paths = [
@@ -96,18 +107,22 @@ def extract_scenarios_from_cache(
     :param model: NN model used for training.
     :return: List of extracted scenarios.
     """
+    logger.info("Extracting scenarios from cache...")
     cache_path = str(cfg.cache.cache_path)
+    cache_metadata_path = str(cfg.cache.cache_metadata_path) if cfg.cache.cache_metadata_path is not None else None
 
     # Find all required feature/target names to load from cache
     feature_builders = model.get_list_of_required_feature()
     target_builders = model.get_list_of_computed_target()
     feature_names = {builder.get_feature_unique_name() for builder in feature_builders + target_builders}
 
+    is_closed_loop = cfg.data_loader.params.sequential_train and not cfg.data_loader.params.params.sequential_val
+
     # Get cached scenario paths locally or remotely
     scenario_cache_paths = (
         get_s3_scenario_cache(cache_path, feature_names, worker)
         if cache_path.startswith('s3://')
-        else get_local_scenario_cache(cache_path, feature_names)
+        else get_local_scenario_cache(cache_path, feature_names, cache_metadata_path, is_closed_loop)
     )
 
     def filter_scenario_cache_paths_by_scenario_type(paths: List[Path]) -> List[Path]:
@@ -134,8 +149,10 @@ def extract_scenarios_from_cache(
             len(scenario_cache_paths) > 0
         ), f"Zero scenario cache paths after filtering by desired scenario types: {cfg.scenario_filter.scenario_types}. Please check if the cache contains the desired scenario type."
 
-    scenarios = worker_map(worker, create_scenario_from_paths, scenario_cache_paths)
-
+    if cfg.data_loader.params.sequential_train:
+        scenarios = worker_map(worker, create_closed_loop_scenario_from_paths, scenario_cache_paths)
+    else:
+        scenarios = worker_map(worker, create_scenario_from_paths, scenario_cache_paths)
     return cast(List[AbstractScenario], scenarios)
 
 
@@ -146,6 +163,7 @@ def extract_scenarios_from_dataset(cfg: DictConfig, worker: WorkerPool) -> List[
     :param worker: Worker to submit tasks which can be executed in parallel.
     :return: List of extracted scenarios.
     """
+    logger.info("Extracting scenarios from dataset...")
     scenario_builder = build_scenario_builder(cfg)
     scenario_filter = build_scenario_filter(cfg.scenario_filter)
     scenarios: List[AbstractScenario] = scenario_builder.get_scenarios(scenario_filter, worker)
@@ -184,6 +202,24 @@ def validate_scenario_type_in_cache_path(paths: List[Path]) -> None:
         not char.isdigit() for char in sample_cache_path.parent.name
     ), "Unable to filter cache by scenario types as it was generated without scenario type information. Please regenerate a new cache if scenario type filtering is required."
 
+
+def create_closed_loop_scenario_from_paths(paths: List[Path]) -> List[AbstractScenario]:
+    """
+    Create scenario objects from a list of cache paths in the format of ".../log_name/scenario_token".
+    :param paths: List of paths to load scenarios from.
+    :return: List of created scenarios.
+    """
+    scenarios = [
+        CachedScenario(
+            log_name=path.parent.parent.name,
+            token=path.name,
+            scenario_type=path.parent.name,
+            scenario_path=path
+        )
+        for path in paths
+    ]
+
+    return scenarios
 
 def create_scenario_from_paths(paths: List[Path]) -> List[AbstractScenario]:
     """

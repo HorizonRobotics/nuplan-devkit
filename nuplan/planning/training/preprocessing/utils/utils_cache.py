@@ -38,8 +38,18 @@ def compute_or_load_feature(
     cache_path_available = cache_path is not None
 
     # Filename of the cached features/targets
+    if isinstance(scenario, CachedScenario):
+        if hasattr(scenario, "_lidarpc_tokens"):
+            token = "_".join([str(iteration), scenario._lidarpc_tokens[iteration]])
+        else:
+            token = ""
+    else:
+        if scenario.get_number_of_iterations() > 1:
+            token = "_".join([str(iteration), scenario._lidarpc_tokens[iteration]])
+        else:
+            token = ""
     file_name = (
-        cache_path / scenario.log_name / scenario.scenario_type / scenario._lidarpc_tokens[iteration] / builder.get_feature_unique_name()
+        cache_path / scenario.log_name / scenario.scenario_type / scenario.token / token / builder.get_feature_unique_name()
         if cache_path_available
         else None
     )

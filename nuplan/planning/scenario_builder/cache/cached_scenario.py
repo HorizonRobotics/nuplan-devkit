@@ -1,4 +1,5 @@
 from typing import Any, Generator, List, Optional, Set, Tuple, Type
+from pathlib import Path
 
 from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.state_representation import StateSE2, TimePoint
@@ -15,16 +16,24 @@ class CachedScenario(AbstractScenario):
     This class is backend-agnostic, and serves as a pointer to precomputed features.
     """
 
-    def __init__(self, log_name: str, token: str, scenario_type: str) -> None:
+    def __init__(self, log_name: str, token: str, scenario_type: str, closed_loop_scenario_path: Path=None) -> None:
         """
         Construct a cached scenario objet.
         :param log_name: The log name for the scenario.
         :param token: The token for the scenario.
         :param scenario_type: The scenario type.
+        :param scenario_path: Full path to the scenario.
         """
         self._log_name = log_name
         self._token = token
         self._scenario_type = scenario_type
+
+        self._scenario_path = closed_loop_scenario_path
+
+        if self._scenario_path is not None:
+            time_stamped_paths = sorted(list(self._scenario_path.iterdir()), key= lambda path: int(path.stem.split("_")[0]))
+            self._scenario_len = len(time_stamped_paths)
+            self._lidarpc_tokens = [path.stem.split("_")[1] for path in time_stamped_paths]
 
     def __reduce__(self) -> Tuple[Type['CachedScenario'], Tuple[Any, ...]]:
         """
@@ -71,10 +80,11 @@ class CachedScenario(AbstractScenario):
         """Inherited, see superclass."""
         raise NotImplementedError("CachedScenario does not implement database_interval.")
 
-    @property
     def get_number_of_iterations(self) -> int:
         """Inherited, see superclass."""
-        raise NotImplementedError("CachedScenario does not implement get_number_of_iterations.")
+        if self._scenario_path is not None:
+            return self._scenario_len
+        raise NotImplementedError("CachedScenario does not impelement get_number_of_iterations.")
 
     def get_time_point(self) -> TimePoint:
         """Inherited, see superclass."""
