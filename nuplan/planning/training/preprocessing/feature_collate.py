@@ -26,7 +26,10 @@ def _batch_abstract_features(
         if hasattr(initial_not_batched_features[key], "collate"):
             output_features[key] = initial_not_batched_features[key].collate(list_features)
         else:
-            output_features[key] = default_collate(list_features)
+            try:
+                output_features[key] = default_collate(list_features)
+            except:
+                output_features[key] = list_features
 
     return output_features
 

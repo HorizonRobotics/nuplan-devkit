@@ -85,15 +85,16 @@ def cache_scenarios(args: List[Dict[str, Union[List[str], DictConfig]]]) -> List
                 node_id,
             )
 
-            features, targets, file_cache_metadata = preprocessor.compute_features(scenario)
+            for iteration in range(scenario.get_number_of_iterations()):
+                features, targets, file_cache_metadata = preprocessor.compute_features(scenario, iteration)
 
-            scenario_num_failures = sum(
-                0 if feature.is_valid else 1 for feature in itertools.chain(features.values(), targets.values())
-            )
-            scenario_num_successes = len(features.values()) + len(targets.values()) - scenario_num_failures
-            num_failures += scenario_num_failures
-            num_successes += scenario_num_successes
-            all_file_cache_metadata += file_cache_metadata
+                scenario_num_failures = sum(
+                    0 if feature.is_valid else 1 for feature in itertools.chain(features.values(), targets.values())
+                )
+                scenario_num_successes = len(features.values()) + len(targets.values()) - scenario_num_failures
+                num_failures += scenario_num_failures
+                num_successes += scenario_num_successes
+                all_file_cache_metadata += file_cache_metadata
 
         logger.info("Finished processing scenarios for thread_id=%s, node_id=%s", thread_id, node_id)
         return [CacheResult(failures=num_failures, successes=num_successes, cache_metadata=all_file_cache_metadata)]

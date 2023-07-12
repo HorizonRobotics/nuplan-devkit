@@ -170,9 +170,9 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
 
     def on_epoch_start(self) -> None:
         # Ensures all CUDA tensors are recycled
-        if not self._token2state:
+        if self._token2state is not None:
             logger.info("Resetting _token2state before epoch starts.")
             self._token2state.clear()
-        if not self._token2cache:
+        if self._token2cache is not None:
             logger.info("Resetting _token2cache before epoch starts.")
             self._token2cache.clear()

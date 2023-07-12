@@ -34,5 +34,8 @@ def move_features_type_to_device(batch: FeaturesType, device: torch.device) -> F
         elif isinstance(value, torch.Tensor):
             output[key] = value.to(device)
         else:
-            output[key] = value.to_device(device)
+            if hasattr(value, "to_device"):
+                output[key] = value.to_device(device)
+            else:
+                output[key] = value
     return output

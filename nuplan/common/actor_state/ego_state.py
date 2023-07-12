@@ -51,23 +51,37 @@ class EgoState(InterpolatableState):
         )
 
     @staticmethod
-    def deserialize(vector: List[Union[int, float]], vehicle: VehicleParameters) -> EgoState:
+    def deserialize(vector: Union[List[Union[int, float]], SplitState], vehicle: VehicleParameters) -> EgoState:
         """
         Deserialize object, ordering kept for backward compatibility
         :param vector: List of variables for deserialization
         :param vehicle: Vehicle parameters
         """
-        if len(vector) != 9:
-            raise RuntimeError(f'Expected a vector of size 9, got {len(vector)}')
+        if isinstance(vector, SplitState):
+            return EgoState.from_split_state(vector)
+        else:
+            if len(vector) != 9:
+                raise RuntimeError(f'Expected a vector of size 9, got {len(vector)}')
 
-        return EgoState.build_from_rear_axle(
-            rear_axle_pose=StateSE2(vector[1], vector[2], vector[3]),
-            rear_axle_velocity_2d=StateVector2D(vector[4], vector[5]),
-            rear_axle_acceleration_2d=StateVector2D(vector[6], vector[7]),
-            tire_steering_angle=vector[8],
-            time_point=TimePoint(int(vector[0])),
-            vehicle_parameters=vehicle,
-        )
+            return EgoState.build_from_rear_axle(
+                rear_axle_pose=StateSE2(vector[1], vector[2], vector[3]),
+                rear_axle_velocity_2d=StateVector2D(vector[4], vector[5]),
+                rear_axle_acceleration_2d=StateVector2D(vector[6], vector[7]),
+                tire_steering_angle=vector[8],
+                time_point=TimePoint(int(vector[0])),
+                vehicle_parameters=vehicle,
+            )
+
+    def serialize(self):
+        """Serialize to a pickle-able state."""
+        return self.to_split_state()
+
+    def to_feature_tensor(self):
+        """Convert to feature tensor.
+        
+        This function is to conform with feature types' signatures.
+        """
+        return self
 
     def __iter__(self) -> Iterable[Union[int, float]]:
         """Iterable over ego parameters"""
@@ -307,6 +321,13 @@ class EgoState(InterpolatableState):
             time_point=time_point,
             is_in_auto_mode=is_in_auto_mode,
         )
+
+    def is_valid(self):
+        """If the feature is valid.
+        
+        This is to conform with feature types' signatures.
+        """
+        return True
 
 
 class EgoStateDot(EgoState):
