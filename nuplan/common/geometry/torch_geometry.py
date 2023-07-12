@@ -215,7 +215,7 @@ def coordinates_to_local_frame(
     :param precision: The precision with which to allocate the intermediate tensors. If None, then it will be inferred from the input precisions.
     :return: <torch.Tensor: num_coords, 2> Transformed coordinates.
     """
-    if len(coords.shape) != 2 or coords.shape[1] not in [2, 4]:
+    if len(coords.shape) != 2 or coords.shape[1] not in [2, 3, 4]:
         raise ValueError(f"Unexpected coords shape: {coords.shape}")
 
     if precision is None:
@@ -249,13 +249,16 @@ def coordinates_to_local_frame(
         #   Get rid of the scaling dimension and transpose so output shape matches input shape.
         result = coords.transpose(0, 1)
         result = result[:, :2]
-    elif coords.shape[1] == 4:
+    elif coords.shape[1] in [3, 4]:
         from nuplan_extent.planning.training.closed_loop.utils.torch_util import matrix_from_pose, pose_from_matrix
         coords_matrix = matrix_from_pose(coords[:, :3].unsqueeze(0))
 
         coords_matrix = torch.matmul(transform[None], coords_matrix)
         new_coords = pose_from_matrix(coords_matrix).squeeze(0)
-        result = torch.cat([new_coords, coords[:, 3:]], dim=-1)
+        if coords.shape[1] > 3:
+            result = torch.cat([new_coords, coords[:, 3:]], dim=-1)
+        else:
+            result = new_coords
 
     return result
 
@@ -277,8 +280,8 @@ def vector_set_coordinates_to_local_frame(
     :return: Transformed coordinates.
     :raise ValueError: If coordinates dimensions are not valid or don't match availabilities.
     """
-    if len(coords.shape) != 3 or coords.shape[2] not in [2, 4]:
-        raise ValueError(f"Unexpected coords shape: {coords.shape}. Expected shape: (*, *, 2) or (*, *, 3)")
+    if len(coords.shape) != 3 or coords.shape[2] not in [2, 3, 4]:
+        raise ValueError(f"Unexpected coords shape: {coords.shape}. Expected shape: (*, *, 2) or (*, *, 3) or (*, *, 4)")
 
     if coords.shape[:2] != avails.shape:
         raise ValueError(f"Mismatching shape between coords and availabilities: {coords.shape[:2]}, {avails.shape}")

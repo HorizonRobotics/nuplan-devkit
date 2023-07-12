@@ -238,7 +238,7 @@ class MapObjectPolylines:
 
     polylines: Union[List[List[Point2D]], List[List[StateSE2]]]
 
-    def to_vector(self) -> List[List[List[float]]]:
+    def to_vector(self, force_heading_computation: bool=False) -> List[List[List[float]]]:
         """
         Returns data in vectorized form
         :return: vectorized coords of map object polylines as [num_elements, num_points_in_element (variable size), 2].
@@ -246,11 +246,23 @@ class MapObjectPolylines:
         polygons = []
         for polygon in self.polylines:
             coords = []
-            for coord in polygon:
+            for i, coord in enumerate(polygon):
                 if hasattr(coord, "heading"):
                     coords.append([coord.x, coord.y, coord.heading])
                 else:
-                    coords.append([coord.x, coord.y])
+                    if force_heading_computation:
+                        point1 = (coord.x, coord.y)
+                        point2 = (polygon[(i+1)%len(polygon)].x, polygon[(i+1)%len(polygon)].y)
+                        # Calculate the vector between the two points
+                        dx = point2[0] - point1[0]
+                        dy = point2[1] - point1[1]
+                        
+                        # Calculate the angle of the vector and add it to the list
+                        # atan2 returns a value between -pi and pi
+                        angle = np.arctan2(dy, dx)
+                        coords.append([coord.x, coord.y, angle])
+                    else:
+                        coords.append([coord.x, coord.y])
             polygons.append(coords)
         return polygons
 

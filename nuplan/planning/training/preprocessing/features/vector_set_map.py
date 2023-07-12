@@ -63,7 +63,7 @@ class VectorSetMap(AbstractModelFeature):
     coords: Dict[str, List[FeatureDataType]]
     traffic_light_data: Dict[str, List[FeatureDataType]]
     availabilities: Dict[str, List[FeatureDataType]]
-    _polyline_coord_dim: int = 2
+    _polyline_coord_dim: int = 3
     _traffic_light_status_dim: int = LaneSegmentTrafficLightData.encoding_dim()
 
     def __post_init__(self) -> None:

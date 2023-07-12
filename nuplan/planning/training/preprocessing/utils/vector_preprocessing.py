@@ -12,25 +12,33 @@ def interpolate_points(coords: torch.Tensor, max_points: int, interpolation: str
     :return: Coordinate points interpolated to max_points size.
     :raise ValueError: If coordinates dimensions are not valid.
     """
-    if len(coords.shape) != 2 or coords.shape[1] not in [2, 4]:
+    if len(coords.shape) != 2 or coords.shape[1] not in [2, 3, 4]:
         raise ValueError(f"Unexpected coords shape: {coords.shape}.")
 
     x_coords = coords[:, 0].unsqueeze(0).unsqueeze(0)
     y_coords = coords[:, 1].unsqueeze(0).unsqueeze(0)
-    if coords.shape[1] == 4:
+    if coords.shape[1] >= 3:
         heading = coords[:, 2].unsqueeze(0).unsqueeze(0)
+    else:
+        heading = None
+    if coords.shape[1] >= 4:
         speed = coords[:, 3].unsqueeze(0).unsqueeze(0)
+    else:
+        speed = None
     align_corners = True if interpolation == 'linear' else None
     x_coords = torch.nn.functional.interpolate(x_coords, max_points, mode=interpolation, align_corners=align_corners)
     y_coords = torch.nn.functional.interpolate(y_coords, max_points, mode=interpolation, align_corners=align_corners)
-    if coords.shape[1] == 4:
+    if coords.shape[1] >= 3:
         heading = torch.nn.functional.interpolate(heading, max_points, mode=interpolation, align_corners=align_corners)
+    if coords.shape[1] >= 4:
         speed = torch.nn.functional.interpolate(speed, max_points, mode=interpolation, align_corners=align_corners)
 
-    if coords.shape[1] == 4:
-        coords = torch.stack((x_coords, y_coords, heading, speed), dim=-1).squeeze()
-    else:
-        coords = torch.stack((x_coords, y_coords), dim=-1).squeeze()
+    stuff_to_stack = [x_coords, y_coords]
+    if heading is not None:
+        stuff_to_stack.append(heading)
+    if speed is not None:
+        stuff_to_stack.append(speed)
+    coords = torch.stack(stuff_to_stack, dim=-1).squeeze()
 
     return coords
 
@@ -75,7 +83,7 @@ def convert_feature_layer_to_fixed_size(
         if feature_name == "LANE":
             dim_coords = 4
         else:
-            dim_coords = 2
+            dim_coords = 3
     coords_tensor = torch.zeros((max_elements, max_points, dim_coords), dtype=torch.float64)
     avails_tensor = torch.zeros((max_elements, max_points), dtype=torch.bool)
     tl_data_tensor = (

@@ -199,7 +199,7 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
             list_feature_coords: List[torch.Tensor] = []
 
             # Pack coords into tensor list
-            for element_coords in feature_coords.to_vector():
+            for element_coords in feature_coords.to_vector(force_heading_computation=True):
                 list_feature_coords.append(torch.tensor(element_coords, dtype=torch.float64))
             list_tensor_data[f"coords.{feature_name}"] = list_feature_coords
 
