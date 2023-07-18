@@ -116,7 +116,7 @@ def extract_scenarios_from_cache(
     target_builders = model.get_list_of_computed_target()
     feature_names = {builder.get_feature_unique_name() for builder in feature_builders + target_builders}
 
-    is_closed_loop = cfg.data_loader.params.sequential_train and not cfg.data_loader.params.params.sequential_val
+    is_closed_loop = cfg.data_loader.params.sequential_train and not cfg.data_loader.params.sequential_val
 
     # Get cached scenario paths locally or remotely
     scenario_cache_paths = (
@@ -214,7 +214,7 @@ def create_closed_loop_scenario_from_paths(paths: List[Path]) -> List[AbstractSc
             log_name=path.parent.parent.name,
             token=path.name,
             scenario_type=path.parent.name,
-            scenario_path=path
+            closed_loop_scenario_path=path
         )
         for path in paths
     ]
