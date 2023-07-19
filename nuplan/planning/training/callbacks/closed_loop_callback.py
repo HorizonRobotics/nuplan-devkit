@@ -181,15 +181,15 @@ class ClosedLoopCallback(pl.Callback):
 
         # self._save_closed_loop_scenario_videos(batch, outputs)
 
-    # def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-    #     os.makedirs("webm", exist_ok=True)
-    #     for key, value in self.token2pics.items():
-    #         video_writer = imageio.get_writer(f"webm/{key}.webm", fps=10, format="WEBM", mode="I", codec='vp9')
+    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        os.makedirs("webm", exist_ok=True)
+        for key, value in self.token2pics.items():
+            video_writer = imageio.get_writer(f"webm/{key}.webm", fps=10, format="WEBM", mode="I", codec='vp9')
 
-    #         for img in value:
-    #             img_array = (img * 255).astype(np.uint8)
-    #             img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+            for img in value:
+                img_array = (img * 255).astype(np.uint8)
+                img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
 
-    #             video_writer.append_data(img_rgb)
+                video_writer.append_data(img_rgb)
 
-    #         video_writer.close()
+            video_writer.close()
