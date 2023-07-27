@@ -37,8 +37,11 @@ objective_aggregate_mode: ??? # How to aggregate multiple objectives, can be 'me
 cache:
   cache_path: ${oc.env:NUPLAN_EXP_ROOT}/cache         # Local/remote path to store all preprocessed artifacts from the data pipeline
   use_cache_without_dataset: false                    # Load all existing features from a local/remote cache without loading the dataset
-  force_feature_computation: false                    # Recompute features even if a cache exists
+  force_feature_computation: false                    # Recompute features even if a cache exists. Overrides "force_recompute" param in individual builders
   cleanup_cache: false                                # Cleanup cached data in the cache_path, this ensures that new data are generated if the same cache_path is passed
 
 # Mandatory parameters
 py_func: ???                                          # Function to be run inside main (can be "train", "test", "cache")
+
+# Pre-train checkpoint
+checkpoint: null                                     # Specify your training pre-train checkpoint here

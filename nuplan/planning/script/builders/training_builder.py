@@ -85,7 +85,7 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     metrics = build_training_metrics(cfg)
 
     # Create the complete Module
-    if isinstance(cfg.checkpoint, str):
+    if isinstance(cfg.checkpoint, str) and Path(cfg.checkpoint).is_file():
         logger.info(f"Loading checkpoint from {cfg.checkpoint}")
         model = LightningModuleWrapperCloseloop.load_from_checkpoint(
             cfg.checkpoint,

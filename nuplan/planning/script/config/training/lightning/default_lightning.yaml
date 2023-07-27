@@ -3,6 +3,8 @@ distributed_training:
 
 trainer:
   checkpoint:
+    # NOTE: resume_training is a deprecated flag in newer pytorch-lightning 1.x versions and will be removed in 2.0
+    # Please use "checkpoint" defined in default_training
     resume_training: false  # load the model from the last epoch and resume training
     save_top_k: 1  # save the top K models in terms of performance
     monitor: loss/val_loss  # metric to monitor for performance

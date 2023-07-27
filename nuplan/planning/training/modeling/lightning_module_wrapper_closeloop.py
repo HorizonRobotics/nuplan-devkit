@@ -101,8 +101,6 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         if 'bev_feature' in predictions:
             return_dict["bev_feature"] = predictions["bev_feature"].to_device("cpu").detach()
 
-        if hasattr(self, "closeloop_data"):
-            return_dict.update(self.closeloop_data["logged_objects"])
         return return_dict
 
     def _log_step(
