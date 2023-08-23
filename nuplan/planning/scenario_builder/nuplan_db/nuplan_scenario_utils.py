@@ -22,6 +22,28 @@ from nuplan.database.nuplan_db.nuplan_scenario_queries import (
 from nuplan.planning.simulation.trajectory.predicted_trajectory import PredictedTrajectory
 from nuplan.planning.simulation.trajectory.trajectory_sampling import TrajectorySampling
 
+import numpy.typing as npt
+from nuplan.common.actor_state.ego_state import EgoState
+from nuplan.common.maps.abstract_map import AbstractMap, MapObject
+import numpy as np
+from nuplan.common.actor_state.state_representation import Point2D
+from nuplan.common.maps.maps_datatypes import SemanticMapLayer
+from nuplan.common.maps.nuplan_map.polyline_map_object import NuPlanPolylineMapObject
+from nuplan.common.maps.nuplan_map.utils import (
+    extract_roadblock_objects,
+)
+from nuplan.planning.training.preprocessing.features.raster_utils import (
+    _cartesian_to_projective_coords,
+)
+from nuplan.common.maps.nuplan_map.e2e_utils import (
+    get_lane_obj_from_id,
+    get_current_center_and_side_lane_from_roadblock,
+)
+from nuplan.planning.training.preprocessing.feature_builders.vector_builder_utils import (
+    MapObjectPolylines,
+)
+from scipy.spatial.transform import Rotation as R
+
 logger = logging.getLogger(__name__)
 
 LIDAR_PC_CACHE = 16 * 2**10  # 16K
@@ -321,3 +343,150 @@ def absolute_path_to_log_name(absolute_path: str) -> str:
     if filename.endswith(".db"):
         filename = os.path.splitext(filename)[0]
     return filename
+
+
+def check_point_on_intersection(map_api: AbstractMap, point: Point2D) -> bool:
+    """
+    Check whether the point is in an intersection.
+    :param map_api: map to perform extraction on.
+    :param point: [m] x, y coordinates in global frame.
+    :return List of roadblocks/roadblock connectors containing point if they exist.
+    """
+    roadblock = map_api.get_one_map_object(point, SemanticMapLayer.ROADBLOCK)
+    if roadblock:
+        return False
+    else:
+        return True
+
+def get_future_pathway_from_lane_ids(
+    ego_state: EgoState,
+    map_api: AbstractMap,
+    lane_ids: List[str],
+    left_ids: List[str],
+    right_ids: List[str],
+    interval: float = 4,
+    initial_interval: float = 6,
+    num_steps: int = 12,
+) -> List[Union[npt.NDArray, List[bool]]]:
+    """
+    Get following future pathway landmarks [N, 2] in equal interval for certain steps:
+        1. Route lane center line;
+        2. Route lane left line;
+        3. Route lane right line;
+        4. Route roadblock left edge;
+        5. Route roadblock right edge;
+        6. Whether route center line point is in intersection.
+    Total distance: initial_interval + (num_steps-1) * interval
+    All points transformed to ego rear axle system.
+
+    :param interval: interval(m) between each point that follows the forward direction.
+    :param initial_interval: initial interval(m) between ego rear axle and first point.
+    :param num_steps: how many points to find.
+    """
+    global_transform = np.linalg.inv(ego_state.rear_axle.as_matrix())
+    # By default the map is right-oriented, this makes it top-oriented.
+    map_align_transform = R.from_euler(
+        'z', 90, degrees=True).as_matrix().astype(
+        np.float32)
+    #TODO: do we need map_align_transform??
+    # transform = map_align_transform @ global_transform
+    transform = global_transform
+
+    center_lane = get_lane_obj_from_id(map_api, lane_ids[0])
+    left_lane = get_lane_obj_from_id(map_api, left_ids[0])
+    right_lane = get_lane_obj_from_id(map_api, right_ids[0])
+
+    total_dist = 0
+    dist_along_current_lane = -100
+    future_route: List[Point2D] = []
+    left_lms: List[Point2D] = []
+    right_lms: List[Point2D] = []
+    left_edges: List[Point2D] = []
+    right_edges: List[Point2D] = []
+    on_intersection: List[bool] = []
+    for i, lane_id in enumerate(lane_ids):
+        center_lane = get_lane_obj_from_id(map_api, lane_id)
+        left_lane = get_lane_obj_from_id(map_api, left_ids[i])
+        right_lane = get_lane_obj_from_id(map_api, right_ids[i])
+        center_polyline: NuPlanPolylineMapObject  = center_lane.baseline_path
+        left_polyline: NuPlanPolylineMapObject  = center_lane.left_boundary
+        right_polyline: NuPlanPolylineMapObject  = center_lane.right_boundary
+        left_edge_polyline: NuPlanPolylineMapObject  = left_lane.left_boundary
+        right_edge_polyline: NuPlanPolylineMapObject  = right_lane.right_boundary
+
+        if dist_along_current_lane == -100:
+            dist_along_current_lane = center_polyline.get_nearest_arc_length_from_position(ego_state.center.point)
+        cur_interval = initial_interval if len(future_route) == 0 else interval
+        while dist_along_current_lane + cur_interval < center_polyline.length:
+            point = center_polyline.linestring.interpolate(dist_along_current_lane + cur_interval)
+            left_point = left_polyline.linestring.interpolate(left_polyline.linestring.project(point))
+            right_point = right_polyline.linestring.interpolate(right_polyline.linestring.project(point))
+
+            future_route.append(Point2D(point.x, point.y))
+            left_lms.append(Point2D(left_point.x, left_point.y))
+            right_lms.append(Point2D(right_point.x, right_point.y))
+            on_intersection.append(check_point_on_intersection(map_api, future_route[-1]))
+            
+            left_edge = left_edge_polyline.linestring.interpolate(dist_along_current_lane + cur_interval)
+            right_edge = right_edge_polyline.linestring.interpolate(dist_along_current_lane + cur_interval)
+            left_edges.append(Point2D(left_edge.x, left_edge.y))
+            right_edges.append(Point2D(right_edge.x, right_edge.y))
+
+            total_dist += cur_interval
+            dist_along_current_lane += cur_interval
+            cur_interval = interval
+            if len(future_route) == num_steps:
+                all_points = MapObjectPolylines([future_route, left_lms, right_lms, left_edges, right_edges]).to_vector()
+                all_points = [(transform @ _cartesian_to_projective_coords(
+                    np.array(polylines)).T).T[:, :2] for polylines in all_points]
+                return [*all_points, on_intersection]
+        # switch to next lane
+        dist_along_current_lane = dist_along_current_lane - center_polyline.length
+    
+    # if future route lane is not enough to cover total steps, extend reasonably forward
+    while len(future_route) < num_steps:
+        next_lanes = center_lane.outgoing_edges
+        if not next_lanes:
+            if len(future_route) > 0:
+                all_points = MapObjectPolylines([future_route, left_lms, right_lms, left_edges, right_edges]).to_vector()
+                all_points = [(transform @ _cartesian_to_projective_coords(
+                    np.array(polylines)).T).T[:, :2] for polylines in all_points]
+                return [*all_points, on_intersection]
+            else:
+                return [future_route, left_lms, right_lms, left_edges, right_edges, on_intersection] 
+        center_lane = next_lanes[0]
+        reference_state = center_lane.baseline_path.discrete_path[0]
+        road = extract_roadblock_objects(map_api, reference_state.point)[0]
+        left_lane, right_lane = get_current_center_and_side_lane_from_roadblock(reference_state, road, False)
+        center_polyline: NuPlanPolylineMapObject  = center_lane.baseline_path
+        left_polyline: NuPlanPolylineMapObject  = center_lane.left_boundary
+        right_polyline: NuPlanPolylineMapObject  = center_lane.right_boundary
+        left_edge_polyline: NuPlanPolylineMapObject  = left_lane.left_boundary
+        right_edge_polyline: NuPlanPolylineMapObject  = right_lane.right_boundary
+
+        cur_interval = initial_interval if len(future_route) == 0 else interval
+        while dist_along_current_lane + cur_interval < center_polyline.length:
+            point = center_polyline.linestring.interpolate(dist_along_current_lane + cur_interval)
+            left_point = left_polyline.linestring.interpolate(left_polyline.linestring.project(point))
+            right_point = right_polyline.linestring.interpolate(right_polyline.linestring.project(point))
+
+            future_route.append(Point2D(point.x, point.y))
+            left_lms.append(Point2D(left_point.x, left_point.y))
+            right_lms.append(Point2D(right_point.x, right_point.y))
+            on_intersection.append(check_point_on_intersection(map_api, future_route[-1]))
+            
+            left_edge = left_edge_polyline.linestring.interpolate(dist_along_current_lane + cur_interval)
+            right_edge = right_edge_polyline.linestring.interpolate(dist_along_current_lane + cur_interval)
+            left_edges.append(Point2D(left_edge.x, left_edge.y))
+            right_edges.append(Point2D(right_edge.x, right_edge.y))
+
+            total_dist += cur_interval
+            dist_along_current_lane += cur_interval
+            cur_interval = interval
+            if len(future_route) == num_steps:
+                all_points = MapObjectPolylines([future_route, left_lms, right_lms, left_edges, right_edges]).to_vector()
+                all_points = [(transform @ _cartesian_to_projective_coords(
+                    np.array(polylines)).T).T[:, :2] for polylines in all_points]
+                return [*all_points, on_intersection]
+        # switch to next lane
+        dist_along_current_lane = dist_along_current_lane - center_polyline.length

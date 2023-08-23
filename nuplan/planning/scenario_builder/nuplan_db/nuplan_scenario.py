@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 from functools import cached_property
-from typing import Any, Generator, List, Optional, Set, Tuple, Type, cast
+from typing import Any, Generator, List, Optional, Set, Tuple, Type, cast, Union
+import numpy.typing as npt
 
 from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.state_representation import StateSE2, TimePoint
@@ -40,7 +41,12 @@ from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_utils import (
 from nuplan.planning.scenario_builder.scenario_utils import sample_indices_with_time_horizon
 from nuplan.planning.simulation.observation.observation_type import DetectionsTracks, Sensors
 from nuplan.planning.simulation.trajectory.trajectory_sampling import TrajectorySampling
-
+from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_utils import (
+    get_future_pathway_from_lane_ids,
+)
+from nuplan.common.maps.nuplan_map.e2e_utils import (
+    get_roadblock_and_lane_ids_from_state,
+)
 
 class NuPlanScenario(AbstractScenario):
     """Scenario implementation for the nuPlan dataset that is used in training and simulation."""
@@ -414,3 +420,48 @@ class NuPlanScenario(AbstractScenario):
             return self._blob_store
 
         return BlobStoreCreator.create_nuplandb(self._data_root)
+
+    @cached_property
+    def _route_roadblock_and_lane_ids(self) -> Tuple[List[str], List[List[str]]]:
+        """
+        return: Roadblock and lane ids along ego route.
+        """
+        ego_state = self.initial_ego_state
+        all_road_ids = self.get_route_roadblock_ids()
+        return get_roadblock_and_lane_ids_from_state(self.map_api, ego_state, all_road_ids)
+
+    def future_pathway_custom(
+        self,
+        interval: float = 4,
+        initial_interval: float = 6,
+        num_steps: int = 16,
+    ) -> List[Union[npt.NDArray, List[bool]]]:
+        """
+        Get sampled future pathway landmarks along ego route in equal interval with custom settings.
+        Returns a list of following 5 polylines and an additional info:
+            1. Route lane center line;
+            2. Route lane left line;
+            3. Route lane right line;
+            4. Route roadblock left edge;
+            5. Route roadblock right edge;
+            6. Whether route center line point is in intersection.
+        Total distance: initial_interval + (num_steps-1) * interval.
+        All points transformed to ego rear axle system.
+
+        :param interval: interval(m) between each point that follows ego route lane.
+        :param initial_interval: initial interval(m) between ego rear axle and first point.
+        :param num_steps: how many points to find.
+        """
+        _, all_lane_ids = self._route_roadblock_and_lane_ids
+
+        center_lane_ids, left_lane_ids, right_lane_ids = all_lane_ids 
+        return get_future_pathway_from_lane_ids(
+            ego_state=self.initial_ego_state,
+            map_api=self.map_api,
+            lane_ids=center_lane_ids,
+            left_ids=left_lane_ids,
+            right_ids=right_lane_ids,
+            interval=interval,
+            initial_interval=initial_interval,
+            num_steps=num_steps,
+        )

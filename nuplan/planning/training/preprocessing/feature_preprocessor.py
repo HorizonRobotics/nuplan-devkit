@@ -98,8 +98,7 @@ class FeaturePreprocessor:
             return all_features, all_targets, all_cache_metadata
         except Exception as error:
             msg = (
-                f"Failed to compute features for scenario token {scenario.token} in log {scenario.log_name}\n"
-                f"Error: {error}"
+                f"Failed to compute features for {scenario._initial_lidar_token} {scenario._initial_lidar_timestamp} {scenario._scenario_type} {scenario._map_name} in log {scenario.log_name}\n"
             )
 
             logger.error(msg)

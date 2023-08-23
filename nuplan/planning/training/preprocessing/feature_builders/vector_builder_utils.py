@@ -5,6 +5,7 @@ from enum import IntEnum
 from typing import Dict, List, Set, Tuple, Union
 
 import numpy as np
+import torch
 
 from nuplan.common.actor_state.state_representation import Point2D, StateSE2
 from nuplan.common.maps.abstract_map import AbstractMap, MapObject
@@ -16,6 +17,7 @@ from nuplan.common.maps.nuplan_map.utils import (
     extract_polygon_from_map_object,
     get_distance_between_map_object_and_point,
 )
+from scipy.spatial import ConvexHull
 
 
 class OnRouteStatusType(IntEnum):
@@ -531,6 +533,29 @@ def get_traffic_light_encoding(
 
     return LaneSegmentTrafficLightData(list(map(tuple, traffic_light_encoding)))  # type: ignore
 
+
+def get_convex_hull(lane_coords, left_boundaries, right_boundaries):
+    assert lane_coords.shape[0] == left_boundaries.shape[0] == right_boundaries.shape[0]
+    polygons = []
+    for lane_coord, left_boundary, right_boundary in zip(lane_coords, left_boundaries, right_boundaries):
+        # Extract the x, y coordinates from the centerlines, and combine with the boundaries
+        centerline_coords = lane_coord[:, :2]
+        left = left_boundary[:, :2]
+        right = right_boundary[:, :2]
+    
+        all_points = np.concatenate([centerline_coords, left, right], axis=0)
+    
+        # Find the convex hull
+        hull = ConvexHull(all_points)
+        polygon = hull.points[hull.vertices].astype(centerline_coords.dtype)
+        polygon = np.concatenate(
+            [polygon, polygon[:1, :]],
+            axis=0
+        )
+        polygons.append(polygon)
+    
+    # Return the vertices of the convex hull
+    return polygons
 
 def get_neighbor_vector_map(
     map_api: AbstractMap, point: Point2D, radius: float

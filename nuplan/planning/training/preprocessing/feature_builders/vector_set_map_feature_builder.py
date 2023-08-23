@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Tuple, Type
+from typing import Dict, List, Tuple, Type, Union
 
 import torch
 
@@ -10,16 +10,15 @@ from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
 from nuplan.planning.simulation.planner.abstract_planner import PlannerInitialization, PlannerInput
 from nuplan.planning.training.preprocessing.feature_builders.scriptable_feature_builder import ScriptableFeatureBuilder
 from nuplan.planning.training.preprocessing.feature_builders.vector_builder_utils import (
-    LaneSegmentTrafficLightData,
-    MapObjectPolylines,
-    VectorFeatureLayer,
-    get_neighbor_vector_set_map,
-    LaneSpeeds
-)
-from nuplan.planning.training.preprocessing.features.abstract_model_feature import AbstractModelFeature, FeatureDataType
-from nuplan.planning.training.preprocessing.features.vector_set_map import VectorSetMap
-from nuplan.planning.training.preprocessing.utils.vector_preprocessing import convert_feature_layer_to_fixed_size
-
+    LaneSegmentTrafficLightData, LaneSpeeds, MapObjectPolylines,
+    VectorFeatureLayer, get_neighbor_vector_set_map)
+from nuplan.planning.training.preprocessing.features.abstract_model_feature import (
+    AbstractModelFeature, FeatureDataType)
+from nuplan.planning.training.preprocessing.features.vector_set_map import \
+    VectorSetMap
+from nuplan.planning.training.preprocessing.utils.vector_preprocessing import \
+    convert_feature_layer_to_fixed_size
+from nuplan.common.geometry.convert import absolute_to_relative_poses
 
 class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
     """
@@ -87,15 +86,27 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
             scenario.map_api, self._map_features, ego_coords, self._radius, route_roadblock_ids, traffic_light_data
         )
 
+        # Scenario mission goal that extends >100m after scenario ends. Unavailable
+        # in simulation.
+        mission_goal = scenario.get_mission_goal()
+
+        # Route polylines, used in training and unavailable in simulation
+        route_polylines = scenario.future_pathway_custom()
+
         tensors, list_tensors, list_list_tensors = self._pack_to_feature_tensor_dict(
-            coords, traffic_light_data, lane_speeds, ego_state.rear_axle
+            coords=coords, 
+            traffic_light_data=traffic_light_data, 
+            speeds=lane_speeds, 
+            anchor_state=ego_state.rear_axle,
+            mission_goal=mission_goal,
         )
 
         tensor_data, list_tensor_data, list_list_tensor_data = self.scriptable_forward(
             tensors, list_tensors, list_list_tensors
         )
 
-        return self._unpack_feature_from_tensor_dict(tensor_data, list_tensor_data, list_list_tensor_data)
+
+        return self._unpack_feature_from_tensor_dict(tensor_data, list_tensor_data, list_list_tensor_data, route_polylines)
 
     @torch.jit.unused
     def get_features_from_simulation(
@@ -131,6 +142,8 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
             tensors, list_tensors, list_list_tensors
         )
 
+
+        mission_goal = np.array(initialization.mission_goal)
         return self._unpack_feature_from_tensor_dict(tensor_data, list_tensor_data, list_list_tensor_data)
 
     @torch.jit.unused
@@ -139,6 +152,7 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
         tensor_data: Dict[str, torch.Tensor],
         list_tensor_data: Dict[str, List[torch.Tensor]],
         list_list_tensor_data: Dict[str, List[List[torch.Tensor]]],
+        route_polylines,
     ) -> VectorSetMap:
         """
         Unpacks the data returned from the scriptable portion of the method into a VectorSetMap object.
@@ -162,10 +176,14 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
                 feature_name = key[len("vector_set_map.availabilities.") :]
                 availabilities[feature_name] = [list_tensor_data[key][0].detach().numpy()]
 
+        mission_goal = tensor_data["mission_goal"]
+
         return VectorSetMap(
             coords=coords,
             traffic_light_data=traffic_light_data,
             availabilities=availabilities,
+            route_polylines=route_polylines,
+            mission_goal=mission_goal,
         )
 
     @torch.jit.unused
@@ -175,6 +193,7 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
         traffic_light_data: Dict[str, LaneSegmentTrafficLightData],
         speeds: LaneSpeeds,
         anchor_state: StateSE2,
+        mission_goal: StateSE2,
     ) -> Tuple[Dict[str, torch.Tensor], Dict[str, List[torch.Tensor]], Dict[str, List[List[torch.Tensor]]]]:
         """
         Transforms the provided map and actor state primitives into scriptable types.
@@ -192,6 +211,10 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
         # anchor state
         anchor_state_tensor = torch.tensor([anchor_state.x, anchor_state.y, anchor_state.heading], dtype=torch.float64)
         tensor_data["anchor_state"] = anchor_state_tensor
+
+        # mission goal, convert to relative pose first
+        mission_goal = absolute_to_relative_poses([anchor_state, mission_goal])[-1]
+        tensor_data["mission_goal"] = torch.tensor(mission_goal.serialize(), dtype=torch.float64)
 
         list_tensor_data: Dict[str, List[torch.Tensor]] = {}
 
@@ -240,6 +263,8 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
         list_list_tensor_output: Dict[str, List[List[torch.Tensor]]] = {}
 
         anchor_state = tensor_data["anchor_state"]
+
+        tensor_output["mission_goal"] = tensor_data["mission_goal"]
 
         for feature_name in self._map_features:
             if f"coords.{feature_name}" in list_tensor_data:

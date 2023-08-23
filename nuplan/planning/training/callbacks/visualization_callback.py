@@ -267,23 +267,23 @@ class VisualizationCallback(pl.Callback):
             'val',
         )
 
-    def on_train_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, unused: int = 0) -> None:
-        if batch_idx % 500 == 499:
-            trainer.logger.experiment.add_histogram("x_dist", torch.cat(self.rng_x), global_step=batch_idx)
-            trainer.logger.experiment.add_histogram("y_dist", torch.cat(self.rng_y), global_step=batch_idx)
-            trainer.logger.experiment.add_histogram("h_dist", torch.cat(self.rng_h), global_step=batch_idx)
-            self.rng_x = []
-            self.rng_y = []
-            self.rng_h = []
-        else:
-            features, _, _ = batch
-            if "rng" in features:
-                rng = features["rng"]
-                rng_x = rng[rng[:, 0]!= -10., 0]
-                rng_y = rng[rng[:, 1]!= -10., 1]
-                rng_h = rng[rng[:, 2]!= -10., 2]
-                self.rng_x.append(rng_x)
-                self.rng_y.append(rng_y)
-                self.rng_h.append(rng_h)
+    # def on_train_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, unused: int = 0) -> None:
+    #     if batch_idx % 500 == 499:
+    #         trainer.logger.experiment.add_histogram("x_dist", torch.cat(self.rng_x), global_step=batch_idx)
+    #         trainer.logger.experiment.add_histogram("y_dist", torch.cat(self.rng_y), global_step=batch_idx)
+    #         trainer.logger.experiment.add_histogram("h_dist", torch.cat(self.rng_h), global_step=batch_idx)
+    #         self.rng_x = []
+    #         self.rng_y = []
+    #         self.rng_h = []
+    #     else:
+    #         features, _, _ = batch
+    #         if "rng" in features:
+    #             rng = features["rng"]
+    #             rng_x = rng[rng[:, 0]!= -10., 0]
+    #             rng_y = rng[rng[:, 1]!= -10., 1]
+    #             rng_h = rng[rng[:, 2]!= -10., 2]
+    #             self.rng_x.append(rng_x)
+    #             self.rng_y.append(rng_y)
+    #             self.rng_h.append(rng_h)
 
             
