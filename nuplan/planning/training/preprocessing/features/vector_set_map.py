@@ -137,9 +137,11 @@ class VectorSetMap(AbstractModelFeature):
         Check data dimensionality as expected.
         :raise RuntimeError if dimensions invalid.
         """
-        for feature_coords in self.coords.values():
+        for feature_name, feature_coords in self.coords.items():
             for sample in feature_coords:
-                if sample.shape[2] != self._polyline_coord_dim:
+                if feature_name == "LANE" and sample.shape[2] != 4:
+                    raise RuntimeError("The dimension of LANE coords is not correct!")
+                elif feature_name != "LANE" and sample.shape[2] != self._polyline_coord_dim:
                     raise RuntimeError("The dimension of coords is not correct!")
 
         for feature_tl_data in self.traffic_light_data.values():

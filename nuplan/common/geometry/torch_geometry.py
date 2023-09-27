@@ -218,7 +218,7 @@ def coordinates_to_local_frame(
     :param precision: The precision with which to allocate the intermediate tensors. If None, then it will be inferred from the input precisions.
     :return: <torch.Tensor: num_coords, 2> Transformed coordinates.
     """
-    if len(coords.shape) != 2 or coords.shape[1] != 2:
+    if len(coords.shape) != 2 or coords.shape[1] not in [2, 4]:
         raise ValueError(f"Unexpected coords shape: {coords.shape}")
 
     if precision is None:
@@ -242,15 +242,23 @@ def coordinates_to_local_frame(
     # [x2, y2]     [x2, y2, 1]
     # ...          ...
     # [xn, yn]     [xn, yn, 1]
-    coords = torch.nn.functional.pad(coords, (0, 1, 0, 0), "constant", value=1.0)
+    if coords.shape[1] == 2:
+        coords = torch.nn.functional.pad(coords, (0, 1, 0, 0), "constant", value=1.0)
 
-    # Perform the transformation, transposing so the shapes match
-    coords = torch.matmul(transform, coords.transpose(0, 1))
+        # Perform the transformation, transposing so the shapes match
+        coords = torch.matmul(transform, coords.transpose(0, 1))
 
-    # Transform back from homogeneous coordinates to standard coordinates.
-    #   Get rid of the scaling dimension and transpose so output shape matches input shape.
-    result = coords.transpose(0, 1)
-    result = result[:, :2]
+        # Transform back from homogeneous coordinates to standard coordinates.
+        #   Get rid of the scaling dimension and transpose so output shape matches input shape.
+        result = coords.transpose(0, 1)
+        result = result[:, :2]
+    elif coords.shape[1] == 4:
+        from nuplan_extent.planning.training.closed_loop.utils.torch_util import matrix_from_pose, pose_from_matrix
+        coords_matrix = matrix_from_pose(coords[:, :3].unsqueeze(0))
+
+        coords_matrix = torch.matmul(transform[None], coords_matrix)
+        new_coords = pose_from_matrix(coords_matrix).squeeze(0)
+        result = torch.cat([new_coords, coords[:, 3:]], dim=-1)
 
     return result
 
@@ -272,22 +280,23 @@ def vector_set_coordinates_to_local_frame(
     :return: Transformed coordinates.
     :raise ValueError: If coordinates dimensions are not valid or don't match availabilities.
     """
-    if len(coords.shape) != 3 or coords.shape[2] != 2:
-        raise ValueError(f"Unexpected coords shape: {coords.shape}. Expected shape: (*, *, 2)")
+    if len(coords.shape) != 3 or coords.shape[2] not in [2, 4]:
+        raise ValueError(f"Unexpected coords shape: {coords.shape}. Expected shape: (*, *, 2) or (*, *, 3)")
 
     if coords.shape[:2] != avails.shape:
         raise ValueError(f"Mismatching shape between coords and availabilities: {coords.shape[:2]}, {avails.shape}")
 
+    feature_dim = coords.shape[2]
     # Flatten coords from (num_map_elements, num_points_per_element, 2) to
     #   (num_map_elements * num_points_per_element, 2) for easier processing.
     num_map_elements, num_points_per_element, _ = coords.size()
-    coords = coords.reshape(num_map_elements * num_points_per_element, 2)
+    coords = coords.reshape(num_map_elements * num_points_per_element, feature_dim)
 
     # Apply transformation using adequate precision
     coords = coordinates_to_local_frame(coords.double(), anchor_state.double(), precision=torch.float64)
 
     # Reshape to original dimensionality
-    coords = coords.reshape(num_map_elements, num_points_per_element, 2)
+    coords = coords.reshape(num_map_elements, num_points_per_element, feature_dim)
 
     # Output with specified precision
     coords = coords.to(output_precision)

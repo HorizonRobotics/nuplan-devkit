@@ -45,24 +45,32 @@ class ImitationObjective(AbstractObjective):
         :param targets: ground truth targets from the dataset
         :return: loss scalar tensor
         """
-        predicted_trajectory = cast(Trajectory, predictions["trajectory"])
+        if isinstance(predictions["trajectory"], list):
+            predicted_trajectories = [cast(Trajectory, i) for i in predictions["trajectory"]]
+        else:
+            predicted_trajectories = [cast(Trajectory, predictions["trajectory"])]
         targets_trajectory = cast(Trajectory, targets["trajectory"])
         loss_weights = extract_scenario_type_weight(
-            scenarios, self._scenario_type_loss_weighting, device=predicted_trajectory.xy.device
+            scenarios, self._scenario_type_loss_weighting, device=predicted_trajectories[-1].xy.device
         )
 
-        broadcast_shape_xy = tuple([-1] + [1 for _ in range(predicted_trajectory.xy.dim() - 1)])
-        broadcasted_loss_weights_xy = loss_weights.view(broadcast_shape_xy)
-        broadcast_shape_heading = tuple([-1] + [1 for _ in range(predicted_trajectory.heading.dim() - 1)])
-        broadcasted_loss_weights_heading = loss_weights.view(broadcast_shape_heading)
+        losses = []
+        for predicted_trajectory in predicted_trajectories:
+            broadcast_shape_xy = tuple([-1] + [1 for _ in range(predicted_trajectory.xy.dim() - 1)])
+            broadcasted_loss_weights_xy = loss_weights.view(broadcast_shape_xy)
+            broadcast_shape_heading = tuple([-1] + [1 for _ in range(predicted_trajectory.heading.dim() - 1)])
+            broadcasted_loss_weights_heading = loss_weights.view(broadcast_shape_heading)
 
-        weighted_xy_loss = self._fn_xy(predicted_trajectory.xy, targets_trajectory.xy) * broadcasted_loss_weights_xy
-        weighted_heading_loss = (
+            weighted_xy_loss = self._fn_xy(predicted_trajectory.xy, targets_trajectory.xy) * broadcasted_loss_weights_xy
+            weighted_heading_loss = (
             self._fn_heading(predicted_trajectory.heading, targets_trajectory.heading)
-            * broadcasted_loss_weights_heading
-        )
-        # Assert that broadcasting was done correctly
-        assert weighted_xy_loss.size() == predicted_trajectory.xy.size()
-        assert weighted_heading_loss.size() == predicted_trajectory.heading.size()
+                * broadcasted_loss_weights_heading
+            )
+            # Assert that broadcasting was done correctly
+            assert weighted_xy_loss.size() == predicted_trajectory.xy.size()
+            assert weighted_heading_loss.size() == predicted_trajectory.heading.size()
 
-        return self._weight * (torch.mean(weighted_xy_loss) + torch.mean(weighted_heading_loss))
+            losses.append(self._weight * (torch.mean(weighted_xy_loss) + torch.mean(weighted_heading_loss)))
+
+        loss = sum(losses) / len(losses)
+        return loss

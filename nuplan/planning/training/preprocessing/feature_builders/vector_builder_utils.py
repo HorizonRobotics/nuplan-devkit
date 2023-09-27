@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Union
 
 import numpy as np
 
-from nuplan.common.actor_state.state_representation import Point2D
+from nuplan.common.actor_state.state_representation import Point2D, StateSE2
 from nuplan.common.maps.abstract_map import AbstractMap, MapObject
 from nuplan.common.maps.maps_datatypes import (
     SemanticMapLayer,
@@ -177,6 +177,12 @@ class LaneSegmentLaneIDs:
 
     lane_ids: List[str]
 
+@dataclass
+class LaneSpeeds:
+    """"""
+
+    speeds: List[float]
+
 
 @dataclass
 class LaneSegmentRoadBlockIDs:
@@ -235,14 +241,23 @@ class MapObjectPolylines:
     [num_elements, num_points_in_element (variable size), 2].
     """
 
-    polylines: List[List[Point2D]]
+    polylines: Union[List[List[Point2D]], List[List[StateSE2]]]
 
     def to_vector(self) -> List[List[List[float]]]:
         """
         Returns data in vectorized form
         :return: vectorized coords of map object polylines as [num_elements, num_points_in_element (variable size), 2].
         """
-        return [[[coord.x, coord.y] for coord in polygon] for polygon in self.polylines]
+        polygons = []
+        for polygon in self.polylines:
+            coords = []
+            for coord in polygon:
+                if hasattr(coord, "heading"):
+                    coords.append([coord.x, coord.y, coord.heading])
+                else:
+                    coords.append([coord.x, coord.y])
+            polygons.append(coords)
+        return polygons
 
 
 def lane_segment_coords_from_lane_segment_vector(coords: List[List[List[float]]]) -> LaneSegmentCoords:
@@ -291,9 +306,10 @@ def get_lane_polylines(
         lanes_right: extracted lane/lane connector right boundary polylines.
         lane_ids: ids of lanes/lane connector associated polylines were extracted from.
     """
-    lanes_mid: List[List[Point2D]] = []  # shape: [num_lanes, num_points_per_lane (variable), 2]
+    lanes_mid: List[List[StateSE2]] = []  # shape: [num_lanes, num_points_per_lane (variable), 2]
     lanes_left: List[List[Point2D]] = []  # shape: [num_lanes, num_points_per_lane (variable), 2]
     lanes_right: List[List[Point2D]] = []  # shape: [num_lanes, num_points_per_lane (variable), 2]
+    lanes_speed: List[List[float]] = []
     lane_ids: List[str] = []  # shape: [num_lanes]
     layer_names = [SemanticMapLayer.LANE, SemanticMapLayer.LANE_CONNECTOR]
     layers = map_api.get_proximal_map_objects(point, radius, layer_names)
@@ -307,7 +323,7 @@ def get_lane_polylines(
 
     for map_obj in map_objects:
         # center lane
-        baseline_path_polyline = [Point2D(node.x, node.y) for node in map_obj.baseline_path.discrete_path]
+        baseline_path_polyline = [StateSE2(node.x, node.y, node.heading) for node in map_obj.baseline_path.discrete_path]
         lanes_mid.append(baseline_path_polyline)
 
         # boundaries
@@ -317,11 +333,18 @@ def get_lane_polylines(
         # lane ids
         lane_ids.append(map_obj.id)
 
+        # speed limits
+        if map_obj.speed_limit_mps is None:
+            lanes_speed.append(16.0)
+        else:
+            lanes_speed.append(min(map_obj.speed_limit_mps, 16.0))
+
     return (
         MapObjectPolylines(lanes_mid),
         MapObjectPolylines(lanes_left),
         MapObjectPolylines(lanes_right),
         LaneSegmentLaneIDs(lane_ids),
+        LaneSpeeds(lanes_speed)
     )
 
 
@@ -604,7 +627,7 @@ def get_neighbor_vector_set_map(
 
     # extract lanes and traffic light
     if VectorFeatureLayer.LANE in feature_layers:
-        lanes_mid, lanes_left, lanes_right, lane_ids = get_lane_polylines(map_api, point, radius)
+        lanes_mid, lanes_left, lanes_right, lane_ids, lane_speeds = get_lane_polylines(map_api, point, radius)
 
         # lane baseline paths
         coords[VectorFeatureLayer.LANE.name] = lanes_mid
@@ -638,4 +661,4 @@ def get_neighbor_vector_set_map(
             )
             coords[feature_layer.name] = polygons
 
-    return coords, traffic_light_data_over_time
+    return coords, traffic_light_data_over_time, lane_speeds
