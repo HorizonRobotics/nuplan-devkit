@@ -23,6 +23,7 @@ class CachedScenario(AbstractScenario):
         scenario_type: str,
         closed_loop_scenario_path: Optional[Path] = None,
         lidarpc_tokens: Optional[List[str]] = None,
+        split = 'train',
     ) -> None:
         """
         Construct a cached scenario object.
@@ -38,6 +39,7 @@ class CachedScenario(AbstractScenario):
         self._log_name = log_name
         self._token = token
         self._scenario_type = scenario_type
+        self.split = split
 
         self._scenario_path = closed_loop_scenario_path
         if self._scenario_path is not None:

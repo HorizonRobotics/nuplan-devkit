@@ -27,7 +27,7 @@ class ModelCheckpointAtEpochEnd(pl.callbacks.ModelCheckpoint):
         """
         super().__init__(save_last=save_last, save_top_k=save_top_k, dirpath=dirpath, monitor=monitor, mode=mode)
 
-    def on_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """
         Customized callback function to save checkpoint every epoch.
         :param trainer: Pytorch lightning trainer instance.

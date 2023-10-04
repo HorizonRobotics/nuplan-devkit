@@ -7,6 +7,9 @@ import pytorch_lightning.loggers
 import pytorch_lightning.plugins
 import torch
 from omegaconf import DictConfig, OmegaConf
+from ray_lightning import RayStrategy
+from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies.strategy import Strategy
 
 from nuplan.planning.script.builders.data_augmentation_builder import build_agent_augmentor
 from nuplan.planning.script.builders.objectives_builder import build_objectives
@@ -112,6 +115,26 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     model = caller(**params)
 
     return cast(pl.LightningModule, model)
+
+
+def _build_strategy(trainer_params: OmegaConf) -> Strategy:
+    strat_name = trainer_params.strategy
+    if trainer_params.devices == "auto" or trainer_params.devices == -1:
+        num_devices = torch.cuda.device_count()
+    else:
+        num_devices = trainer_params.devices
+    gpus = [torch.device(f"cuda:{i}") for i in range(num_devices)]
+    if strat_name == "ddp":
+        return DDPStrategy(accelerator="gpu", parallel_devices=gpus, find_unused_parameters=False)
+    elif strat_name == "ray":
+        return RayStrategy(
+            num_workers=4, 
+            num_cpus_per_worker=20,
+            use_gpu=True, 
+            resources_per_worker={"GPU": 2}
+        )
+    else:
+        raise ValueError(f"Unknown or unsupported strategy: {strat_name}. Supported are ddp, ray.")
 
 
 def build_trainer(cfg: DictConfig) -> pl.Trainer:
