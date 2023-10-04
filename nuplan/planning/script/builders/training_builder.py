@@ -8,6 +8,9 @@ import pytorch_lightning.plugins
 import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
+from ray_lightning import RayStrategy
+from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies.strategy import Strategy
 
 from nuplan.planning.script.builders.data_augmentation_builder import build_agent_augmentor
 from nuplan.planning.script.builders.objectives_builder import build_objectives
@@ -116,6 +119,26 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     return cast(pl.LightningModule, model)
 
 
+def _build_strategy(trainer_params: OmegaConf) -> Strategy:
+    strat_name = trainer_params.strategy
+    if trainer_params.devices == "auto" or trainer_params.devices == -1:
+        num_devices = torch.cuda.device_count()
+    else:
+        num_devices = trainer_params.devices
+    gpus = [torch.device(f"cuda:{i}") for i in range(num_devices)]
+    if strat_name == "ddp":
+        return DDPStrategy(accelerator="gpu", parallel_devices=gpus, find_unused_parameters=False)
+    elif strat_name == "ray":
+        return RayStrategy(
+            num_workers=4, 
+            num_cpus_per_worker=20,
+            use_gpu=True, 
+            resources_per_worker={"GPU": 2}
+        )
+    else:
+        raise ValueError(f"Unknown or unsupported strategy: {strat_name}. Supported are ddp, ray.")
+
+
 def build_trainer(cfg: DictConfig) -> pl.Trainer:
     """
     Builds the lightning trainer from the config.
@@ -125,10 +148,6 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
     params = cfg.lightning.trainer.params
 
     callbacks = build_callbacks(cfg)
-
-    plugins = [
-        pl.plugins.DDPPlugin(find_unused_parameters=False, num_nodes=params.num_nodes),
-    ]
 
     loggers = [
         pl.loggers.TensorBoardLogger(
@@ -140,13 +159,18 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
         ),
     ]
 
+    strategy = _build_strategy(params)
+    del params.strategy
+    del params.accelerator
+    del params.devices
+
     if cfg.lightning.trainer.overfitting.enable:
         OmegaConf.set_struct(cfg, False)
         params = OmegaConf.merge(params, cfg.lightning.trainer.overfitting.params)
         params.check_val_every_n_epoch = params.max_epochs + 1
         OmegaConf.set_struct(cfg, True)
 
-        return pl.Trainer(plugins=plugins, **params)
+        return pl.Trainer(**params)
 
     if cfg.lightning.trainer.checkpoint.resume_training:
         OmegaConf.set_struct(cfg, False)
@@ -161,20 +185,18 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
 
             params.resume_from_checkpoint = str(last_checkpoint)
             latest_epoch = torch.load(last_checkpoint)['epoch']
-            # params.max_epochs += latest_epoch
             logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
 
         else:
             # Resume training from designated checkpoint
             params.resume_from_checkpoint = str(cfg.lightning.trainer.checkpoint.resume_training)
             latest_epoch = torch.load(params.resume_from_checkpoint)['epoch']
-            # params.max_epochs += latest_epoch
             logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {params.resume_from_checkpoint}')
         OmegaConf.set_struct(cfg, True)
 
     trainer = pl.Trainer(
         callbacks=callbacks,
-        plugins=plugins,
+        strategy=strategy,
         logger=loggers,
         **params,
     )

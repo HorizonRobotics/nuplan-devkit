@@ -46,7 +46,7 @@ def build_training_engine(cfg: DictConfig, worker: WorkerPool) -> TrainingEngine
     # Build the datamodule
     datamodule = build_lightning_datamodule(cfg, worker, torch_module_wrapper)
 
-    if cfg.lightning.trainer.params.accelerator == 'ddp':  # Update the learning rate parameters to suit ddp
+    if cfg.lightning.trainer.params.strategy == 'ddp':  # Update the learning rate parameters to suit ddp
         cfg = scale_cfg_for_distributed_training(cfg, datamodule=datamodule, worker=worker)
     else:
         logger.info(
