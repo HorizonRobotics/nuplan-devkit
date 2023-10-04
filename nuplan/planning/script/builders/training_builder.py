@@ -168,14 +168,14 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
 
             params.resume_from_checkpoint = str(last_checkpoint)
             latest_epoch = torch.load(last_checkpoint)['epoch']
-            params.max_epochs += latest_epoch
+            # params.max_epochs += latest_epoch
             logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
 
         else:
             # Resume training from designated checkpoint
             params.resume_from_checkpoint = str(cfg.lightning.trainer.checkpoint.resume_training)
             latest_epoch = torch.load(params.resume_from_checkpoint)['epoch']
-            params.max_epochs += latest_epoch
+            # params.max_epochs += latest_epoch
             logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {params.resume_from_checkpoint}')
         OmegaConf.set_struct(cfg, True)
 
