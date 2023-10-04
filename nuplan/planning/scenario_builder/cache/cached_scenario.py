@@ -16,7 +16,14 @@ class CachedScenario(AbstractScenario):
     This class is backend-agnostic, and serves as a pointer to precomputed features.
     """
 
-    def __init__(self, log_name: str, token: str, scenario_type: str, closed_loop_scenario_path: Path=None) -> None:
+    def __init__(
+        self,
+        log_name: str,
+        token: str,
+        scenario_type: str,
+        closed_loop_scenario_path: Optional[Path] = None,
+        lidarpc_tokens: Optional[List[str]] = None,
+    ) -> None:
         """
         Construct a cached scenario objet.
         :param log_name: The log name for the scenario.
@@ -29,11 +36,13 @@ class CachedScenario(AbstractScenario):
         self._scenario_type = scenario_type
 
         self._scenario_path = closed_loop_scenario_path
-
         if self._scenario_path is not None:
             time_stamped_paths = sorted(list(self._scenario_path.iterdir()), key= lambda path: int(path.stem.split("_")[0]))
             self._scenario_len = len(time_stamped_paths)
             self._lidarpc_tokens = [path.stem.split("_")[1] for path in time_stamped_paths]
+        elif lidarpc_tokens is not None:
+            self._lidarpc_tokens = lidarpc_tokens
+            self._scenario_len = len(lidarpc_tokens)
 
     def __reduce__(self) -> Tuple[Type['CachedScenario'], Tuple[Any, ...]]:
         """
@@ -82,9 +91,7 @@ class CachedScenario(AbstractScenario):
 
     def get_number_of_iterations(self) -> int:
         """Inherited, see superclass."""
-        if self._scenario_path is not None:
-            return self._scenario_len
-        raise NotImplementedError("CachedScenario does not impelement get_number_of_iterations.")
+        return self._scenario_len
 
     def get_time_point(self) -> TimePoint:
         """Inherited, see superclass."""

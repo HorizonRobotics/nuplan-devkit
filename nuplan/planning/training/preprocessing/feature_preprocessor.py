@@ -31,6 +31,7 @@ class FeaturePreprocessor:
         force_feature_computation: bool,
         feature_builders: List[AbstractFeatureBuilder],
         target_builders: List[AbstractTargetBuilder],
+        versatile_cache: bool = False,
     ):
         """
         Initialize class.
@@ -46,6 +47,7 @@ class FeaturePreprocessor:
         self._storing_mechanism = (
             FeatureCacheS3(cache_path) if str(cache_path).startswith('s3://') else FeatureCachePickle()
         )
+        self._versatile_cache = versatile_cache
 
         assert len(feature_builders) != 0, "Number of feature builders has to be grater than 0!"
 
@@ -84,26 +86,16 @@ class FeaturePreprocessor:
         :param scenario for which features and targets should be computed
         :return: model features and targets and cache metadata
         """
-        try:
-            all_features: FeaturesType
-            all_feature_cache_metadata: List[CacheMetadataEntry]
-            all_targets: TargetsType
-            all_targets_cache_metadata: List[CacheMetadataEntry]
+        all_features: FeaturesType
+        all_feature_cache_metadata: List[CacheMetadataEntry]
+        all_targets: TargetsType
+        all_targets_cache_metadata: List[CacheMetadataEntry]
 
-            all_features, all_feature_cache_metadata = self._compute_all_features(scenario, self._feature_builders, iteration)
-            all_targets, all_targets_cache_metadata = self._compute_all_features(scenario, self._target_builders, iteration)
+        all_features, all_feature_cache_metadata = self._compute_all_features(scenario, self._feature_builders, iteration)
+        all_targets, all_targets_cache_metadata = self._compute_all_features(scenario, self._target_builders, iteration)
 
-            all_cache_metadata = all_feature_cache_metadata + all_targets_cache_metadata
-            return all_features, all_targets, all_cache_metadata
-        except Exception as error:
-            msg = (
-                f"Failed to compute features for scenario token {scenario.token} in log {scenario.log_name}\n"
-                f"Error: {error}"
-            )
-
-            logger.error(msg)
-            traceback.print_exc()
-            raise RuntimeError(msg)
+        all_cache_metadata = all_feature_cache_metadata + all_targets_cache_metadata
+        return all_features, all_targets, all_cache_metadata
 
     def _compute_all_features(
         self, scenario: AbstractScenario, builders: List[Union[AbstractFeatureBuilder, AbstractTargetBuilder]], iteration: int
@@ -119,10 +111,18 @@ class FeaturePreprocessor:
         all_features_metadata_entries: List[CacheMetadataEntry] = []
 
         for builder in builders:
-            feature, feature_metadata_entry = compute_or_load_feature(
-                scenario, self._cache_path, builder, self._storing_mechanism, self._force_feature_computation, iteration
-            )
-            all_features[builder.get_feature_unique_name()] = feature
-            all_features_metadata_entries.append(feature_metadata_entry)
+            try:
+                feature, feature_metadata_entry = compute_or_load_feature(
+                    scenario, self._cache_path, builder, self._storing_mechanism, self._force_feature_computation, iteration, self._versatile_cache,           )
+                all_features[builder.get_feature_unique_name()] = feature
+                all_features_metadata_entries.append(feature_metadata_entry)
+            except Exception as error:
+                msg = (
+                    f"Failed to compute {builder.get_feature_unique_name()} for scenario token {scenario.token} in log {scenario.log_name}\n"
+                    f"Error: {error}"
+                )
+                logger.error(msg)
+                all_features[builder.get_feature_unique_name()] = None
+                all_features_metadata_entries.append(None)
 
         return all_features, all_features_metadata_entries

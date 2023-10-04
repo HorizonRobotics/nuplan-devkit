@@ -11,4 +11,3 @@ params:
   sequential_train: true  # must be True for closed-loop and sequential training
   sequential_val: true  # must be True for sequential validation
   sequential_test: true  # must be True for sequential testing
-  trim_scenario_end: true  # trim scenario max len at the end for NuScenes and Carla, should be False for Nuplan
