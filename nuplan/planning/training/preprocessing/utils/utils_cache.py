@@ -103,6 +103,13 @@ def compute_or_load_feature(
         logger.debug(f"Loading feature: {file_name} from a file...")
         try:
             feature = storing_mechanism.load_computed_feature_from_folder(file_name, builder.get_feature_type())
+            # hard code
+            if builder.get_feature_unique_name() == "front_lanes":
+                n = feature.data.shape[1]
+                if n < 12:
+                    padded_arr = np.zeros((2, 12, 2), dtype=feature.data.dtype)
+                    padded_arr[:, :n, :] = feature.data
+                    feature.data = padded_arr
         except Exception:
             if isinstance(builder, AbstractFeatureBuilder):
                 feature = builder.get_features_from_scenario(scenario, iteration)
