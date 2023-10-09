@@ -26,7 +26,7 @@ trainer:
     num_nodes: 1
     strategy: ddp # training stragety
     
-    precision: 16  # floating point precision
+    precision: 32 # floating point precision
     amp_level: null  # AMP optimization level. Requires NVIDIA apex
     amp_backend: native
 
