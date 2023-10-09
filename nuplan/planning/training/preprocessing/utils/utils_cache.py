@@ -110,6 +110,12 @@ def compute_or_load_feature(
                     padded_arr = np.zeros((2, 12, 2), dtype=feature.data.dtype)
                     padded_arr[:, :n, :] = feature.data
                     feature.data = padded_arr
+            if builder.get_feature_unique_name() == "front_edges":
+                n = feature.data.shape[0]
+                if n < 16:
+                    padded_arr = np.zeros((16, 2), dtype=feature.data.dtype)
+                    padded_arr[:n, :] = feature.data
+                    feature.data = padded_arr
         except Exception:
             if isinstance(builder, AbstractFeatureBuilder):
                 feature = builder.get_features_from_scenario(scenario, iteration)
