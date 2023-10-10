@@ -7,6 +7,7 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
+from torchmetrics import Metric
 
 from nuplan.planning.script.builders.lr_scheduler_builder import build_lr_scheduler
 from nuplan.planning.training.modeling.metrics.planning_metrics import AbstractTrainingMetric
@@ -28,6 +29,7 @@ class LightningModuleWrapper(pl.LightningModule):
         model: TorchModuleWrapper,
         objectives: List[AbstractObjective],
         metrics: List[AbstractTrainingMetric],
+        aggregated_metrics: List[Metric],
         batch_size: int,
         optimizer: Optional[DictConfig] = None,
         lr_scheduler: Optional[DictConfig] = None,
@@ -40,6 +42,7 @@ class LightningModuleWrapper(pl.LightningModule):
         :param model: pytorch model
         :param objectives: list of learning objectives used for supervision at each step
         :param metrics: list of planning metrics computed at each step
+        :param aggregated_metrics: list of metrics computed at the end of each epoch
         :param batch_size: batch_size taken from dataloader config
         :param optimizer: config for instantiating optimizer. Can be 'None' for older models.
         :param lr_scheduler: config for instantiating lr_scheduler. Can be 'None' for older models and when an lr_scheduler is not being used.
@@ -52,6 +55,7 @@ class LightningModuleWrapper(pl.LightningModule):
         self.model = model
         self.objectives = objectives
         self.metrics = metrics
+        self.aggregated_metrics = aggregated_metrics
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
         self.warm_up_lr_scheduler = warm_up_lr_scheduler
@@ -82,10 +86,21 @@ class LightningModuleWrapper(pl.LightningModule):
         objectives = self._compute_objectives(predictions, targets, scenarios)
         metrics = self._compute_metrics(predictions, targets)
         loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
+        if prefix == 'val':
+            self._update_aggregated_metrics(predictions, targets)
 
         self._log_step(loss, objectives, metrics, prefix)
-
         return loss
+    
+    def _update_aggregated_metrics(self, predictions: TargetsType, targets: TargetsType) -> None:
+        """
+        Updates the aggregated metrics given the model's predictions and targets.
+
+        :param predictions: model's predictions
+        :param targets: ground truth targets
+        """
+        for metric in self.aggregated_metrics:
+            metric.update(predictions, targets)
 
     def _compute_objectives(
         self, predictions: TargetsType, targets: TargetsType, scenarios: ScenarioListType
@@ -155,6 +170,17 @@ class LightningModuleWrapper(pl.LightningModule):
         :return: model's loss tensor
         """
         return self._step(batch, 'val')
+    
+    def on_validation_epoch_end(self):
+        """
+        Step called for each batch example during validation.
+
+        :param outputs: 
+        """
+        for metric in self.aggregated_metrics:
+            metric = metric.to(self.device)
+            metric.log(logger=self.log, data=metric.compute())
+            metric.reset()
 
     def test_step(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], batch_idx: int) -> torch.Tensor:
         """
