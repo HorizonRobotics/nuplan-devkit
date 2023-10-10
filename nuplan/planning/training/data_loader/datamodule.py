@@ -123,6 +123,7 @@ class DataModule(pl.LightningDataModule):
         scenario_type_sampling_weights: DictConfig,
         worker: WorkerPool,
         augmentors: Optional[List[AbstractAugmentor]] = None,
+        val_augmentors: Optional[List[AbstractAugmentor]] = None,
     ) -> None:
         """
         Initialize the class.
@@ -168,6 +169,7 @@ class DataModule(pl.LightningDataModule):
 
         # Augmentation setup
         self._augmentors = augmentors
+        self._val_augmentors = val_augmentors
 
         # Worker for multiprocessing to speed up initialization of datasets
         self._worker = worker
@@ -221,7 +223,7 @@ class DataModule(pl.LightningDataModule):
                 self._feature_preprocessor,
                 self._val_fraction,
                 "validation",
-                None,
+                self._val_augmentors,
                 val_batch_size,
             )
         elif stage == 'test':
