@@ -124,17 +124,17 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param prefix: prefix prepended at each artifact's name
         :param loss_name: name given to the loss for logging
         """
-        self.log('idx', batch_idx, prog_bar=True)
-        self.log(f'loss/{prefix}_{loss_name}', loss)
+        self.log('idx', batch_idx, prog_bar=True, batch_size=self.batch_size)
+        self.log(f'loss/{prefix}_{loss_name}', loss, batch_size=self.batch_size)
 
         for key, value in objectives.items():
-            self.log(f'objectives/{prefix}_{key}', value)
+            self.log(f'objectives/{prefix}_{key}', value, batch_size=self.batch_size)
 
         for key, value in metrics.items():
-            self.log(f'metrics/{prefix}_{key}', value)
+            self.log(f'metrics/{prefix}_{key}', value, batch_size=self.batch_size)
 
         for key, value in kwargs.items():
-            self.log(f'{key}', value)
+            self.log(f'{key}', value, batch_size=self.batch_size)
 
     def training_step(self, batch: Tuple[FeaturesType, TargetsType], batch_idx: int) -> torch.Tensor:
         """
