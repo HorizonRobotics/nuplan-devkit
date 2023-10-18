@@ -51,9 +51,10 @@ def cache_scenarios(args: List[Dict[str, Union[List[str], DictConfig]]]) -> List
         model = build_torch_module_wrapper(cfg.model)
         feature_builders = model.get_list_of_required_feature()
         target_builders = model.get_list_of_computed_target()
-        for builder in feature_builders + target_builders:
-            if builder.get_feature_unique_name() in cfg.cache.force_recompute_features:
-                builder.force_recompute = True
+        if cfg.cache.force_recompute_features is not None:
+            for builder in feature_builders + target_builders:
+                if builder.get_feature_unique_name() in cfg.cache.force_recompute_features:
+                    builder.force_recompute = True
 
         # Now that we have the feature and target builders, we do not need the model any more.
         # Delete it so it gets gc'd and we can save a few system resources.
