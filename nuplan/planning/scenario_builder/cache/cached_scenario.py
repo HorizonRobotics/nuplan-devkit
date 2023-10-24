@@ -29,7 +29,8 @@ class CachedScenario(AbstractScenario):
         :param log_name: The log name for the scenario.
         :param token: The token for the scenario.
         :param scenario_type: The scenario type.
-        :param scenario_path: Full path to the scenario.
+        :param closed_loop_scenario_path: path to the cache.
+        :param lidarpc_tokens: ist of lidarpc tokens in the cached scenario.
         """
         self._log_name = log_name
         self._token = token

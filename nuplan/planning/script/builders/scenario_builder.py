@@ -206,6 +206,10 @@ def extract_scenarios_from_dataset(cfg: DictConfig, worker: WorkerPool) -> List[
 def build_scenarios(cfg: DictConfig, worker: WorkerPool, model: TorchModuleWrapper) -> List[AbstractScenario]:
     """
     Build the scenario objects that comprise the training dataset.
+    Add versatile caching function, will use cached scenarios directly unless:
+    1. force recompute features are provided;
+    2. no cache record file available;
+    3. there are required features not in cache record file.
     :param cfg: Omegaconf dictionary.
     :param worker: Worker to submit tasks which can be executed in parallel.
     :param model: NN model used for training.
