@@ -83,6 +83,22 @@ class EgoState(InterpolatableState):
         """
         return self
 
+    @classmethod
+    def deserialize_from_cache(cls, cache):
+        """Deserialize from cache."""
+        return cls.from_split_state(cache)
+
+    def serialize(self):
+        """Serialize to a pickle-able state."""
+        return self.to_split_state()
+
+    def to_feature_tensor(self):
+        """Convert to feature tensor.
+        
+        This function is to conform with feature types' signatures.
+        """
+        return self
+
     def __iter__(self) -> Iterable[Union[int, float]]:
         """Iterable over ego parameters"""
         return iter(

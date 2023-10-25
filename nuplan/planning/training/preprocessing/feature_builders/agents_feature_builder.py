@@ -61,7 +61,7 @@ class AgentsFeatureBuilder(ScriptableFeatureBuilder):
         return Agents  # type: ignore
 
     @torch.jit.unused
-    def get_features_from_scenario(self, scenario: AbstractScenario) -> Agents:
+    def get_features_from_scenario(self, scenario: AbstractScenario, iteration) -> Agents:
         """Inherited, see superclass."""
         # Retrieve present/past ego states and agent boxes
         with torch.no_grad():

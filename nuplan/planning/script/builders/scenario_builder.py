@@ -8,15 +8,18 @@ from omegaconf import DictConfig
 
 from nuplan.common.utils.s3_utils import check_s3_path_exists, expand_s3_dir, get_cache_metadata_paths, split_s3_path
 from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
-from nuplan.planning.scenario_builder.cache.cached_scenario import CachedScenario
-from nuplan.planning.script.builders.scenario_building_builder import build_scenario_builder
-from nuplan.planning.script.builders.scenario_filter_builder import build_scenario_filter
+from nuplan.planning.scenario_builder.cache.cached_scenario import \
+    CachedScenario
+from nuplan.planning.script.builders.scenario_building_builder import \
+    build_scenario_builder
+from nuplan.planning.script.builders.scenario_filter_builder import \
+    build_scenario_filter
 from nuplan.planning.training.experiments.cache_metadata_entry import (
-    extract_field_from_cache_metadata_entries,
-    read_cache_metadata,
-)
-from nuplan.planning.training.modeling.torch_module_wrapper import TorchModuleWrapper
-from nuplan.planning.utils.multithreading.worker_utils import WorkerPool, worker_map
+    extract_field_from_cache_metadata_entries, read_cache_metadata)
+from nuplan.planning.training.modeling.torch_module_wrapper import \
+    TorchModuleWrapper
+from nuplan.planning.utils.multithreading.worker_utils import (WorkerPool,
+                                                               worker_map)
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +92,12 @@ def get_local_scenario_cache(cache_path: str, feature_names: Set[str], cache_met
         candidate_scenario_dirs = [path for log_dir in cache_dir.iterdir() for type_dir in log_dir.iterdir() for path in type_dir.iterdir()]
 
     # Keep only dir paths that contains all required feature names
-    scenario_cache_paths = [
-        path
-        for path in candidate_scenario_dirs
-        if not (feature_names - {feature_name.stem for feature_name in path.iterdir()})
-    ]
+    # scenario_cache_paths = [
+    #     path
+    #     for path in candidate_scenario_dirs
+    #     if not (feature_names - {feature_name.stem for feature_name in path.iterdir()})
+    # ]
+    scenario_cache_paths = candidate_scenario_dirs
 
     return scenario_cache_paths
 

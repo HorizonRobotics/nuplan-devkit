@@ -92,6 +92,7 @@ class FeaturePreprocessor:
 
             all_features, all_feature_cache_metadata = self._compute_all_features(scenario, self._feature_builders, iteration)
             all_targets, all_targets_cache_metadata = self._compute_all_features(scenario, self._target_builders, iteration)
+            # print(f"{scenario.token}, {[(key, val[0].shape[1]) for key, val in all_features['generic_agents'].agents.items()]}, {[(key, val[0].shape[1]) for key, val in all_targets['agents_trajectory_target'].agents.items()]}")
 
             all_cache_metadata = all_feature_cache_metadata + all_targets_cache_metadata
             return all_features, all_targets, all_cache_metadata
