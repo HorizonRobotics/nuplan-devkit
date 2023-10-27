@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 from omegaconf import DictConfig
+from torchmetrics import Metric
 
 from nuplan.planning.training.modeling.metrics.planning_metrics import \
     AbstractTrainingMetric
@@ -35,6 +36,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         model: TorchModuleWrapper,
         objectives: List[AbstractObjective],
         metrics: List[AbstractTrainingMetric],
+        aggregated_metrics: List[Metric],
         batch_size: int,
         optimizer: Optional[DictConfig] = None,
         lr_scheduler: Optional[DictConfig] = None,
@@ -47,6 +49,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param model: pytorch model
         :param objectives: list of learning objectives used for supervision at each step
         :param metrics: list of planning metrics computed at each step
+        :param aggregated_metrics: list of metrics computed at the end of each epoch
         :param batch_size: batch_size taken from dataloader config
         :param optimizer: config for instantiating optimizer. Can be 'None' for older models.
         :param lr_scheduler: config for instantiating lr_scheduler. Can be 'None' for older models and when an lr_scheduler is not being used.
@@ -57,6 +60,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
             model=model,
             objectives=objectives,
             metrics=metrics,
+            aggregated_metrics=aggregated_metrics,
             batch_size=batch_size,
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
@@ -88,6 +92,8 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         objectives = self._compute_objectives(predictions, targets, scenarios)
         metrics = self._compute_metrics(predictions, targets)
         loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
+        if prefix == 'val':
+            self._update_aggregated_metrics(predictions, targets)
 
         self._log_step(loss, objectives, metrics, prefix, batch_idx=batch_idx)
 

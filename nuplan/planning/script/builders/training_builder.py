@@ -6,7 +6,6 @@ import pytorch_lightning as pl
 import pytorch_lightning.loggers
 import pytorch_lightning.plugins
 import torch
-from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
 from nuplan.planning.script.builders.data_augmentation_builder import build_agent_augmentor
@@ -15,6 +14,7 @@ from nuplan.planning.script.builders.scenario_builder import build_scenarios
 from nuplan.planning.script.builders.splitter_builder import build_splitter
 from nuplan.planning.script.builders.training_callback_builder import build_callbacks
 from nuplan.planning.script.builders.training_metrics_builder import build_training_metrics
+from nuplan.planning.script.builders.aggregated_metrics_builder import build_aggregated_metrics
 from nuplan.planning.script.builders.utils.utils_checkpoint import extract_last_checkpoint_from_experiment
 from nuplan.planning.training.data_loader.datamodule import DataModule
 from nuplan.planning.training.modeling.lightning_module_wrapper_closeloop import LightningModuleWrapperCloseloop
@@ -53,6 +53,7 @@ def build_lightning_datamodule(
 
     # Create data augmentation
     augmentors = build_agent_augmentor(cfg.data_augmentation) if 'data_augmentation' in cfg else None
+    val_augmentors = build_agent_augmentor(cfg.val_data_augmentation) if 'val_data_augmentation' in cfg else None
 
     # Build dataset scenarios
     scenarios = build_scenarios(cfg, worker, model)
@@ -64,6 +65,7 @@ def build_lightning_datamodule(
         all_scenarios=scenarios,
         dataloader_params=cfg.data_loader.params,
         augmentors=augmentors,
+        val_augmentors=val_augmentors,
         worker=worker,
         scenario_type_sampling_weights=cfg.scenario_type_weights.scenario_type_sampling_weights,
         **cfg.data_loader.datamodule,
@@ -84,6 +86,9 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
 
     # Build metrics to evaluate the performance of predictions
     metrics = build_training_metrics(cfg)
+    
+    # Build aggregated metrics to evaluate the performance of predictions
+    aggregated_metrics = build_aggregated_metrics(cfg)
 
     # Create the complete Module
     if cfg.checkpoint.ckpt_path is not None:
@@ -94,6 +99,7 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
             model=torch_module_wrapper,
             objectives=objectives,
             metrics=metrics,
+            aggregated_metrics=aggregated_metrics,
             batch_size=cfg.data_loader.params.batch_size,
             optimizer=cfg.optimizer,
             lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
@@ -106,6 +112,7 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
             model=torch_module_wrapper,
             objectives=objectives,
             metrics=metrics,
+            aggregated_metrics=aggregated_metrics,
             batch_size=cfg.data_loader.params.batch_size,
             optimizer=cfg.optimizer,
             lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
