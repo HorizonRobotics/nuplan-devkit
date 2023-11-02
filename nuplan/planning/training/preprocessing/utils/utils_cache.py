@@ -42,8 +42,6 @@ def compute_or_load_feature(
     if cache_path_available:
         if versatile_cache:
             feature_path = cache_path / scenario.log_name / scenario._lidarpc_tokens[iteration]
-            print(feature_path)
-            exit()
         else:
             if isinstance(scenario, CachedScenario):
                 if hasattr(scenario, "_lidarpc_tokens"):

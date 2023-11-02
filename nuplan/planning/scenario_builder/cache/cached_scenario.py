@@ -25,12 +25,15 @@ class CachedScenario(AbstractScenario):
         lidarpc_tokens: Optional[List[str]] = None,
     ) -> None:
         """
-        Construct a cached scenario objet.
+        Construct a cached scenario object.
+        There are two methods to get all lidarpc_tokens:
+        1. provide closed_loop_scenario_path to indicate scenario cache path and search for lidarpc_tokens;
+        2. provide lidarpc_tokens directly.
         :param log_name: The log name for the scenario.
         :param token: The token for the scenario.
         :param scenario_type: The scenario type.
         :param closed_loop_scenario_path: path to the cache.
-        :param lidarpc_tokens: ist of lidarpc tokens in the cached scenario.
+        :param lidarpc_tokens: list of lidarpc tokens in the cached scenario.
         """
         self._log_name = log_name
         self._token = token

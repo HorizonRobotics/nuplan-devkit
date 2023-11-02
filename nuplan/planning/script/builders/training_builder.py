@@ -91,7 +91,7 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     aggregated_metrics = build_aggregated_metrics(cfg)
 
     # Create the complete Module
-    if cfg.checkpoint.ckpt_path is not None:
+    if 'checkpoint' in cfg and cfg.checkpoint.ckpt_path is not None:
         assert Path(cfg.checkpoint.ckpt_path).is_file()
         logger.info(f"Loading checkpoint from {cfg.checkpoint.ckpt_path} with strict {cfg.checkpoint.strict}")
         model = LightningModuleWrapperCloseloop.load_from_checkpoint(
@@ -168,14 +168,14 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
 
             params.resume_from_checkpoint = str(last_checkpoint)
             latest_epoch = torch.load(last_checkpoint)['epoch']
-            # params.max_epochs += latest_epoch
+            params.max_epochs += latest_epoch
             logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
 
         else:
             # Resume training from designated checkpoint
             params.resume_from_checkpoint = str(cfg.lightning.trainer.checkpoint.resume_training)
             latest_epoch = torch.load(params.resume_from_checkpoint)['epoch']
-            # params.max_epochs += latest_epoch
+            params.max_epochs += latest_epoch
             logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {params.resume_from_checkpoint}')
         OmegaConf.set_struct(cfg, True)
 

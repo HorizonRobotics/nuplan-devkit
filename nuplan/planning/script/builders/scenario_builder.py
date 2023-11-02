@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 import pickle
-from typing import Dict, List, Set, cast, Optional
+from typing import Dict, List, Set, cast, Optional, Tuple
 
 from multiprocessing import Pool
 from omegaconf import DictConfig
@@ -68,12 +68,22 @@ def get_s3_scenario_cache(
     return scenario_cache_paths
 
 
-def valid_check(path_and_feature_names):
+def valid_check(path_and_feature_names: Tuple[Path, Set[str]]):
+    """
+    Check whether a scenario path has all feature cache in feature_names set.
+    If not, return None.
+    :param path_and_feature_names: tuple of scenario path and set of required feature names.
+    """
     path, feature_names_set = path_and_feature_names
     return path if feature_names_set <= {feature_name.stem for feature_name in path.iterdir()} else None
 
 
-def valid_check_sequential(path_and_feature_names):
+def valid_check_sequential(path_and_feature_names: Tuple[Path, Set[str]]):
+    """
+    Check whether a sequential scenario path has all feature cache in feature_names set for every frame.
+    If not, return None.
+    :param path_and_feature_names: tuple of scenario path and set of required feature names.
+    """
     scene_path, feature_names_set = path_and_feature_names
     valid = [feature_names_set <= {feature_name.stem for feature_name in path.iterdir()} for path in scene_path.iterdir()]
     if all(valid):
@@ -183,6 +193,12 @@ def extract_scenarios_from_cache(
 def extract_scenarios_from_cache_records(
     cached_scenario_records: List[Dict], worker: WorkerPool, 
 ) -> List[AbstractScenario]:
+    """
+    Extract cached scenarios from cached scenarios record.
+    :param cached_scenario_records: List of cached scenarios info.
+    :param worker: Worker to submit tasks which can be executed in parallel.
+    :return: List of extracted scenarios.
+    """
     logger.info("Loading cached scenario in versatile manner...")
     scenarios = worker_map(worker, create_scenario_from_records, cached_scenario_records)
     return cast(List[AbstractScenario], scenarios)
