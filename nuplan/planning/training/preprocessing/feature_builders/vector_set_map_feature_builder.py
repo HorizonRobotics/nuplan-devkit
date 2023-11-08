@@ -84,10 +84,11 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
         ego_state = scenario.initial_ego_state
         ego_coords = Point2D(ego_state.rear_axle.x, ego_state.rear_axle.y)
         route_roadblock_ids = scenario.get_route_roadblock_ids()
-        traffic_light_data = list(scenario.get_traffic_light_status_at_iteration(0))
+        traffic_light_data = [TrafficLightStatuses(list(scenario.get_traffic_light_status_at_iteration(0)))]
+
 
         coords, traffic_light_data, lane_speeds = get_neighbor_vector_set_map(
-            scenario.map_api, self._map_features, ego_coords, self._radius, route_roadblock_ids, traffic_light_data
+            scenario.map_api, self.map_features, ego_coords, self.radius, route_roadblock_ids, traffic_light_data
         )
 
         tensors, list_tensors, list_list_tensors = self._pack_to_feature_tensor_dict(
@@ -100,7 +101,8 @@ class VectorSetMapFeatureBuilder(ScriptableFeatureBuilder):
         tensor, list_tensor, list_list_tensor = self.scriptable_forward(
             tensors, list_tensors, list_list_tensors
         )
-        return tensor, list_tensor, list_list_tensor
+
+        return self._unpack_feature_from_tensor_dict(tensor, list_tensor, list_list_tensor)
 
     @torch.jit.unused
     def get_scriptable_input_from_simulation(
