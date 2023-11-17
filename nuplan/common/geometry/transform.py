@@ -24,7 +24,7 @@ def translate(pose: StateSE2, translation: npt.NDArray[np.float64]) -> StateSE2:
     :return: The translated pose
     """
     assert translation.shape == (2,) or translation.shape == (2, 1)
-    return StateSE2(pose.x + translation[0], pose.y + translation[1], pose.heading)
+    return StateSE2(pose.x + translation[0], pose.y + translation[1], pose.heading, pose.z)
 
 
 def rotate(pose: StateSE2, rotation_matrix: npt.NDArray[np.float64]) -> StateSE2:
@@ -37,7 +37,7 @@ def rotate(pose: StateSE2, rotation_matrix: npt.NDArray[np.float64]) -> StateSE2
     assert rotation_matrix.shape == (2, 2)
     rotated_point = np.array([pose.x, pose.y]) @ rotation_matrix
     rotation_angle = np.arctan2(rotation_matrix[1, 0], rotation_matrix[1, 1])
-    return StateSE2(rotated_point[0], rotated_point[1], pose.heading + rotation_angle)
+    return StateSE2(rotated_point[0], rotated_point[1], pose.heading + rotation_angle, pose.z)
 
 
 def rotate_angle(pose: StateSE2, theta: float) -> StateSE2:
