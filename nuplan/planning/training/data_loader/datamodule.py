@@ -278,6 +278,7 @@ class DataModule(pl.LightningDataModule):
                     shuffle=False,
                 ),
                 collate_fn=FeatureCollate(),
+                persistent_workers=True,
             )
         else:
             return torch.utils.data.DataLoader(
@@ -341,7 +342,7 @@ class DataModule(pl.LightningDataModule):
             )
 
     def transfer_batch_to_device(
-        self, batch: Tuple[FeaturesType, ...], device: torch.device
+        self, batch: Tuple[FeaturesType, ...], device: torch.device, dataloader_idx: int
     ) -> Tuple[FeaturesType, ...]:
         """
         Transfer a batch to device.

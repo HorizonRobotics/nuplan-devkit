@@ -86,7 +86,10 @@ class FeatureCachePickle(FeatureCache):
         """Inherited, see superclass."""
         with gzip.open(self.with_extension(feature_file), 'rb') as f:
             data = pickle.load(f)
-        return feature_type.deserialize(data)
+        try:
+            return feature_type.deserialize(data)
+        except:
+            return feature_type.deserialize_from_cache(data)
 
 
 class FeatureCacheS3(FeatureCache):
