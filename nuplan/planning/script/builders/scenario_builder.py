@@ -2,6 +2,7 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 import pickle
+import os
 from typing import Dict, List, Set, cast, Optional, Tuple
 
 from multiprocessing import Pool
@@ -120,7 +121,7 @@ def get_local_scenario_cache(cache_path: str, feature_names: Optional[Set[str]],
         logger.info("Validate candidate scenarios...")
         logger.info(f"feautre_names : {feature_names}")
         check_func = valid_check_sequential if is_sequential else valid_check
-        with Pool(48) as p:
+        with Pool(os.cpu_count()) as p:
             scenario_cache_dirs = [path for path in tqdm(p.imap(check_func, [(path, feature_names) for path in candidate_scenario_dirs]), total=len(candidate_scenario_dirs)) if path is not None]
         logger.info(f"Found {len(scenario_cache_dirs)} scenarios in cache.")
 
