@@ -24,7 +24,7 @@ trainer:
     gpus: -1  # number of GPUs to utilize (-1 means all available GPUs)
     accelerator: ddp  # distribution method
     precision: 16  # floating point precision
-    amp_level: O2  # AMP optimization level
+    amp_level: O2 # AMP optimization level
     num_nodes: 1  # Number of nodes used for training
 
     auto_scale_batch_size: false

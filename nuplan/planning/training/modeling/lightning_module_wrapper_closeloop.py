@@ -99,13 +99,15 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
 
         return_dict = {
             "loss": loss,
-            "trajectory": predictions["trajectory"],
         }
+        return_dict.update(predictions)
 
-        if "out_feature" in predictions:
-            return_dict["out_feature"] = predictions["out_feature"].detach()
-        if 'bev_feature' in predictions:
-            return_dict["bev_feature"] = predictions["bev_feature"].to_device("cpu").detach()
+        if "out_feature" in return_dict:
+            return_dict["out_feature"] = return_dict["out_feature"].detach()
+        if "latent_feature" in return_dict:
+            return_dict["latent_feature"] = return_dict["latent_feature"].detach()
+        if 'bev_feature' in return_dict:
+            return_dict["bev_feature"] = return_dict["bev_feature"].to_device("cpu").detach()
 
         return return_dict
 

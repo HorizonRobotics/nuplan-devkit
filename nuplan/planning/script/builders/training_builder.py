@@ -48,6 +48,7 @@ def build_lightning_datamodule(
         force_feature_computation=cfg.cache.force_feature_computation,
         feature_builders=feature_builders,
         target_builders=target_builders,
+        versatile_cache=cfg.cache.versatile_caching,
     )
 
     # Create data augmentation
@@ -90,10 +91,11 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     aggregated_metrics = build_aggregated_metrics(cfg) if "aggregated_metric" in cfg else {}
 
     # Create the complete Module
-    if isinstance(cfg.checkpoint, str) and Path(cfg.checkpoint).is_file():
-        logger.info(f"Loading checkpoint from {cfg.checkpoint}")
+    if 'checkpoint' in cfg and cfg.checkpoint.ckpt_path is not None:
+        assert Path(cfg.checkpoint.ckpt_path).is_file()
+        logger.info(f"Loading checkpoint from {cfg.checkpoint.ckpt_path} with strict {cfg.checkpoint.strict}")
         model = LightningModuleWrapperCloseloop.load_from_checkpoint(
-            cfg.checkpoint,
+            cfg.checkpoint.ckpt_path,
             model=torch_module_wrapper,
             objectives=objectives,
             metrics=metrics,
@@ -103,6 +105,7 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
             lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
             warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
             objective_aggregate_mode=cfg.objective_aggregate_mode,
+            strict=cfg.checkpoint.strict,
         )
     else:
         model = LightningModuleWrapperCloseloop(

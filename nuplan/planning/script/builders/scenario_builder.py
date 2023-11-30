@@ -1,10 +1,14 @@
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Set, cast
+import pickle
+import os
+from typing import Dict, List, Set, cast, Optional, Tuple
 
-import pandas
+from multiprocessing import Pool
 from omegaconf import DictConfig
+import pandas
+from tqdm import tqdm
 
 from nuplan.common.utils.s3_utils import check_s3_path_exists, expand_s3_dir, get_cache_metadata_paths, split_s3_path
 from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
@@ -65,7 +69,31 @@ def get_s3_scenario_cache(
     return scenario_cache_paths
 
 
-def get_local_scenario_cache(cache_path: str, feature_names: Set[str], cache_metadata_path: Optional[str]=None, closed_loop_cache: bool=False) -> List[Path]:
+def valid_check(path_and_feature_names: Tuple[Path, Set[str]]):
+    """
+    Check whether a scenario path has all feature cache in feature_names set.
+    If not, return None.
+    :param path_and_feature_names: tuple of scenario path and set of required feature names.
+    """
+    path, feature_names_set = path_and_feature_names
+    return path if feature_names_set <= {feature_name.stem for feature_name in path.iterdir()} else None
+
+
+def valid_check_sequential(path_and_feature_names: Tuple[Path, Set[str]]):
+    """
+    Check whether a sequential scenario path has all feature cache in feature_names set for every frame.
+    If not, return None.
+    :param path_and_feature_names: tuple of scenario path and set of required feature names.
+    """
+    scene_path, feature_names_set = path_and_feature_names
+    valid = [feature_names_set <= {feature_name.stem for feature_name in path.iterdir()} for path in scene_path.iterdir()]
+    if all(valid):
+        return scene_path
+    else:
+        return None
+
+
+def get_local_scenario_cache(cache_path: str, feature_names: Optional[Set[str]], cache_metadata_path: Optional[str]=None, is_sequential: bool=False) -> List[Path]:
     """
     Get a list of cached scenario paths from a local cache.
     :param cache_path: Root path of the local cache dir.
@@ -81,7 +109,7 @@ def get_local_scenario_cache(cache_path: str, feature_names: Set[str], cache_met
         assert cache_metadata_file.suffix == '.csv', f"{cache_metadata_file} is not a CSV file."
         logger.info(f"Loading from {cache_metadata_file}...")
         csv = pandas.read_csv(cache_metadata_file)
-        if closed_loop_cache:
+        if is_sequential:
             candidate_scenario_dirs = list(set([Path(i).parent.parent for i in csv['file_name'].tolist()]))
         else:
             candidate_scenario_dirs = list(set([Path(i).parent for i in csv['file_name'].tolist()]))
@@ -89,13 +117,15 @@ def get_local_scenario_cache(cache_path: str, feature_names: Set[str], cache_met
         candidate_scenario_dirs = [path for log_dir in cache_dir.iterdir() for type_dir in log_dir.iterdir() for path in type_dir.iterdir()]
 
     # Keep only dir paths that contains all required feature names
-    scenario_cache_paths = [
-        path
-        for path in candidate_scenario_dirs
-        if not (feature_names - {feature_name.stem for feature_name in path.iterdir()})
-    ]
+    if feature_names is not None:
+        logger.info("Validate candidate scenarios...")
+        logger.info(f"feautre_names : {feature_names}")
+        check_func = valid_check_sequential if is_sequential else valid_check
+        with Pool(os.cpu_count()) as p:
+            scenario_cache_dirs = [path for path in tqdm(p.imap(check_func, [(path, feature_names) for path in candidate_scenario_dirs]), total=len(candidate_scenario_dirs)) if path is not None]
+        logger.info(f"Found {len(scenario_cache_dirs)} scenarios in cache.")
 
-    return scenario_cache_paths
+    return candidate_scenario_dirs
 
 
 def extract_scenarios_from_cache(
@@ -113,17 +143,21 @@ def extract_scenarios_from_cache(
     cache_metadata_path = str(cfg.cache.cache_metadata_path) if cfg.cache.cache_metadata_path is not None else None
 
     # Find all required feature/target names to load from cache
-    feature_builders = model.get_list_of_required_feature()
-    target_builders = model.get_list_of_computed_target()
-    feature_names = {builder.get_feature_unique_name() for builder in feature_builders + target_builders}
+    cache_valid_check = cfg.cache.get("valid_check", True)
+    if cache_valid_check:
+        feature_builders = model.get_list_of_required_feature()
+        target_builders = model.get_list_of_computed_target()
+        feature_names = {builder.get_feature_unique_name() for builder in feature_builders + target_builders}
+    else:
+        feature_names = None
 
-    is_closed_loop = cfg.data_loader.params.sequential_train and not cfg.data_loader.params.sequential_val
+    is_sequential = cfg.data_loader.params.sequential_train
 
     # Get cached scenario paths locally or remotely
     scenario_cache_paths = (
         get_s3_scenario_cache(cache_path, feature_names, worker)
         if cache_path.startswith('s3://')
-        else get_local_scenario_cache(cache_path, feature_names, cache_metadata_path, is_closed_loop)
+        else get_local_scenario_cache(cache_path, feature_names, cache_metadata_path, is_sequential)
     )
 
     def filter_scenario_cache_paths_by_scenario_type(paths: List[Path]) -> List[Path]:
@@ -157,6 +191,20 @@ def extract_scenarios_from_cache(
     return cast(List[AbstractScenario], scenarios)
 
 
+def extract_scenarios_from_cache_records(
+    cached_scenario_records: List[Dict], worker: WorkerPool, 
+) -> List[AbstractScenario]:
+    """
+    Extract cached scenarios from cached scenarios record.
+    :param cached_scenario_records: List of cached scenarios info.
+    :param worker: Worker to submit tasks which can be executed in parallel.
+    :return: List of extracted scenarios.
+    """
+    logger.info("Loading cached scenario in versatile manner...")
+    scenarios = worker_map(worker, create_scenario_from_records, cached_scenario_records)
+    return cast(List[AbstractScenario], scenarios)
+
+
 def extract_scenarios_from_dataset(cfg: DictConfig, worker: WorkerPool) -> List[AbstractScenario]:
     """
     Extract and filter scenarios by loading a dataset using the scenario builder.
@@ -175,16 +223,51 @@ def extract_scenarios_from_dataset(cfg: DictConfig, worker: WorkerPool) -> List[
 def build_scenarios(cfg: DictConfig, worker: WorkerPool, model: TorchModuleWrapper) -> List[AbstractScenario]:
     """
     Build the scenario objects that comprise the training dataset.
+    Add versatile caching function, will use cached scenarios directly unless:
+    1. force recompute features are provided;
+    2. no cache record file available;
+    3. there are required features not in cache record file.
     :param cfg: Omegaconf dictionary.
     :param worker: Worker to submit tasks which can be executed in parallel.
     :param model: NN model used for training.
     :return: List of extracted scenarios.
     """
-    scenarios = (
-        extract_scenarios_from_cache(cfg, worker, model)
-        if cfg.cache.use_cache_without_dataset
-        else extract_scenarios_from_dataset(cfg, worker)
-    )
+    if cfg.cache.get('versatile_caching', False):
+
+        feature_builders = model.get_list_of_required_feature()
+        target_builders = model.get_list_of_computed_target()
+
+        force_recompute_features = cfg.cache.force_recompute_features
+        if force_recompute_features:
+            actual_recompute_features = []
+            for builder in feature_builders + target_builders:
+                if builder.get_feature_unique_name() in force_recompute_features:
+                    builder.force_recompute = True
+                    actual_recompute_features.append(builder.get_feature_unique_name())
+            logger.info(f'Versatile caching: recompute features {actual_recompute_features}')
+            scenarios = extract_scenarios_from_dataset(cfg, worker)
+        else:
+            versatile_cache_pickle_file = Path(cfg.cache.versatile_cache_pickle_file)
+            if versatile_cache_pickle_file.exists():
+                with open(versatile_cache_pickle_file, 'rb') as f:
+                    cached_scenario_records = pickle.load(f)
+                required_features = {builder.get_feature_unique_name() for builder in feature_builders + target_builders}
+                existing_features = set(cached_scenario_records[-1])
+                if required_features - existing_features:
+                    logger.info(f'Versatile caching: there are missing features, need to compute!')
+                    scenarios = extract_scenarios_from_dataset(cfg, worker)
+                else:
+                    logger.info(f'Versatile caching: all features exist, use cache directly')
+                    subsample = cfg.cache.versatile_cache_subsample
+                    scenarios = extract_scenarios_from_cache_records(cached_scenario_records[0:-1:subsample], worker)
+            else:
+                logger.info(f'Versatile caching: no cached_scenario file, will create normal scenario!')
+                scenarios = extract_scenarios_from_dataset(cfg, worker)
+    else:
+        if cfg.cache.use_cache_without_dataset:
+            scenarios = extract_scenarios_from_cache(cfg, worker, model)
+        else:
+            scenarios = extract_scenarios_from_dataset(cfg, worker)
 
     logger.info(f'Extracted {len(scenarios)} scenarios for training')
     assert len(scenarios) > 0, 'No scenarios were retrieved for training, check the scenario_filter parameters!'
@@ -235,6 +318,24 @@ def create_scenario_from_paths(paths: List[Path]) -> List[AbstractScenario]:
             scenario_type=path.parent.name,
         )
         for path in paths
+    ]
+
+    return scenarios
+
+def create_scenario_from_records(records: List[Dict]) -> List[AbstractScenario]:
+    """
+    Create scenario objects from a list of cached scenario records.
+    :param paths: List of paths to load scenarios from.
+    :return: List of created scenarios.
+    """
+    scenarios = [
+        CachedScenario(
+            log_name=record["log_name"],
+            token=record["token"],
+            scenario_type=record["scenario_type"],
+            lidarpc_tokens=record["lidarpc_tokens"],
+        )
+        for record in records
     ]
 
     return scenarios

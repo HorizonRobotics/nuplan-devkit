@@ -40,6 +40,7 @@ def initialize_ray(
             ray will launch in distributed mode
     :return: created WorkerResources.
     """
+    temp_dir = os.environ.get('RAY_TMP_DIR', '/tmp/ray')
     # Env variables which are set through SLURM script
     env_var_master_node_ip = 'ip_head'
     env_var_master_node_password = 'redis_password'
@@ -81,6 +82,7 @@ def initialize_ray(
             dashboard_host='0.0.0.0',
             local_mode=local_mode,
             log_to_driver=log_to_driver,
+            _temp_dir=temp_dir,
         )
 
     return WorkerResources(
