@@ -8,8 +8,8 @@ import pytorch_lightning.plugins
 import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
-from ray_lightning import RayStrategy
-from pytorch_lightning.strategies import DDPStrategy
+# from ray_lightning import RayStrategy
+from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
 from pytorch_lightning.strategies.strategy import Strategy
 
 from nuplan.planning.script.builders.data_augmentation_builder import build_agent_augmentor
@@ -89,32 +89,20 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     metrics = build_training_metrics(cfg)
 
     # Create the complete Module
+    model = LightningModuleWrapperCloseloop(
+        model=torch_module_wrapper,
+        objectives=objectives,
+        metrics=metrics,
+        batch_size=cfg.data_loader.params.batch_size,
+        optimizer=cfg.optimizer,
+        lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
+        warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
+        objective_aggregate_mode=cfg.objective_aggregate_mode,
+    )
     if cfg.checkpoint.ckpt_path is not None:
         assert Path(cfg.checkpoint.ckpt_path).is_file()
-        logger.info(f"Loading checkpoint from {cfg.checkpoint.ckpt_path} with strict {cfg.checkpoint.strict}")
-        model = LightningModuleWrapperCloseloop.load_from_checkpoint(
-            cfg.checkpoint.ckpt_path,
-            model=torch_module_wrapper,
-            objectives=objectives,
-            metrics=metrics,
-            batch_size=cfg.data_loader.params.batch_size,
-            optimizer=cfg.optimizer,
-            lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
-            warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
-            objective_aggregate_mode=cfg.objective_aggregate_mode,
-            strict=cfg.checkpoint.strict,
-        )
-    else:
-        model = LightningModuleWrapperCloseloop(
-            model=torch_module_wrapper,
-            objectives=objectives,
-            metrics=metrics,
-            batch_size=cfg.data_loader.params.batch_size,
-            optimizer=cfg.optimizer,
-            lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
-            warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
-            objective_aggregate_mode=cfg.objective_aggregate_mode,
-        )
+        checkpoint = torch.load(cfg.checkpoint.ckpt_path, map_location='cpu')
+        model.load_state_dict(checkpoint['state_dict'], strict=cfg.checkpoint.strict)
 
     return cast(pl.LightningModule, model)
 
@@ -128,6 +116,10 @@ def _build_strategy(trainer_params: OmegaConf) -> Strategy:
     gpus = [torch.device(f"cuda:{i}") for i in range(num_devices)]
     if strat_name == "ddp":
         return DDPStrategy(accelerator="gpu", parallel_devices=gpus, find_unused_parameters=False)
+    elif strat_name == 'deepspeed':
+        return DeepSpeedStrategy(stage=2, offload_optimizer=False, allgather_bucket_size=5e8, reduce_bucket_size=5e8, logging_batch_size_per_gpu=8)
+    elif strat_name.startswith('deepspeed'):
+        return strat_name
     elif strat_name == "ray":
         return RayStrategy(
             num_workers=4, 
@@ -171,28 +163,6 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
         OmegaConf.set_struct(cfg, True)
 
         return pl.Trainer(**params)
-
-    if cfg.lightning.trainer.checkpoint.resume_training:
-        OmegaConf.set_struct(cfg, False)
-        if isinstance(cfg.lightning.trainer.checkpoint.resume_training, bool):
-            # Resume training from latest checkpoint
-            output_dir = Path(cfg.output_dir)
-            date_format = cfg.date_format
-
-            last_checkpoint = extract_last_checkpoint_from_experiment(output_dir, date_format)
-            if not last_checkpoint:
-                raise ValueError('Resume Training is enabled but no checkpoint was found!')
-
-            params.resume_from_checkpoint = str(last_checkpoint)
-            latest_epoch = torch.load(last_checkpoint)['epoch']
-            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
-
-        else:
-            # Resume training from designated checkpoint
-            params.resume_from_checkpoint = str(cfg.lightning.trainer.checkpoint.resume_training)
-            latest_epoch = torch.load(params.resume_from_checkpoint)['epoch']
-            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {params.resume_from_checkpoint}')
-        OmegaConf.set_struct(cfg, True)
 
     trainer = pl.Trainer(
         callbacks=callbacks,

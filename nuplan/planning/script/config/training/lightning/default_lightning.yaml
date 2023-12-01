@@ -25,25 +25,21 @@ trainer:
     devices: auto # how many devices to use. Can be an integer, an integer list or auto
     num_nodes: 1
     strategy: ddp # training stragety
+    use_distributed_sampler: true
     
-    precision: 32 # floating point precision
-    amp_level: null  # AMP optimization level. Requires NVIDIA apex
-    amp_backend: native
+    precision: bf16 # floating point precision
 
-    auto_scale_batch_size: false
-    auto_lr_find: false  # tunes LR before beginning training
-    detect_anomaly: true  # enable anomaly detection in the autograd engine
+    detect_anomaly: false  # enable anomaly detection in the autograd engine
 
     num_sanity_val_steps: 0  # number of validation steps to run before training begins
     fast_dev_run: false  # runs 1 batch of train/val/test for sanity
 
     accumulate_grad_batches: 1  # accumulates gradients every n batches
-    track_grad_norm: -1  # logs the p-norm for inspection
     gradient_clip_val: 0.0  # value to clip gradients
     gradient_clip_algorithm: norm  # [value, norm] method to clip gradients
 
-    checkpoint_callback: true  # enable default checkpoint
-    replace_sampler_ddp: true  # set to false to add your own distributed sampler
+    # checkpoint_callback: true  # enable default checkpoint
+    # replace_sampler_ddp: true  # set to false to add your own distributed sampler
     sync_batchnorm: false  # enable synchronization between batchnorm layers across all GPUs
     deterministic: false  # If true enables cudnn.deterministic. Might make your system slower, but ensures reproducibility
 
