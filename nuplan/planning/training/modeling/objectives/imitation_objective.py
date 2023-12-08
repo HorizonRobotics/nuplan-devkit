@@ -1,6 +1,7 @@
 from typing import Dict, List, cast
 
 import torch
+import torch.nn.functional as F
 
 from nuplan.planning.training.modeling.objectives.abstract_objective import AbstractObjective
 from nuplan.planning.training.modeling.objectives.scenario_weight_utils import extract_scenario_type_weight
@@ -61,6 +62,13 @@ class ImitationObjective(AbstractObjective):
             self._fn_heading(predicted_trajectory.heading, targets_trajectory.heading)
             * broadcasted_loss_weights_heading
         )
+
+        if "uncertainty" in predictions:
+            unc_xy = torch.exp(predictions["uncertainty"].data[..., :2])
+            unc_h = torch.exp(predictions["uncertainty"].data[..., 2])
+            weighted_xy_loss = weighted_xy_loss / (unc_xy**2 + 1) + 2 * torch.log(unc_xy + 1)
+            weighted_heading_loss = weighted_heading_loss / (unc_h**2 + 1) + 2 * torch.log(unc_h + 1)
+
         # Assert that broadcasting was done correctly
         assert weighted_xy_loss.size() == predicted_trajectory.xy.size()
         assert weighted_heading_loss.size() == predicted_trajectory.heading.size()
