@@ -3,7 +3,12 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
+from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
+    AbstractTrainingController
+from nuplan_extent.planning.training.modeling.sequential_utilities.feature_cache import \
+    FeatureCacheContainer
 from omegaconf import DictConfig
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torchmetrics import Metric
 
 from nuplan.planning.training.modeling.metrics.planning_metrics import \
@@ -18,9 +23,6 @@ from nuplan.planning.training.modeling.types import (FeaturesType,
                                                      ScenarioListType,
                                                      TargetsType)
 
-from nuplan_extent.planning.training.modeling.sequential_utilities.feature_cache import FeatureCacheContainer
-from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
-    AbstractTrainingController
 from .lightning_module_wrapper import LightningModuleWrapper
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         optimizer: Optional[DictConfig] = None,
         lr_scheduler: Optional[DictConfig] = None,
         warm_up_lr_scheduler: Optional[DictConfig] = None,
-        objective_aggregate_mode: str = 'mean',
+        objective_aggregate_mode: str = "mean",
     ) -> None:
         """
         Initializes the class.
@@ -71,12 +73,19 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         self.batch_size = batch_size
 
         # closed loop essentials
-        self._token2state: Dict[str, AbstractTrainingController] = {}  # State memory for every scenario
+        self._token2state: Dict[
+            str, AbstractTrainingController
+        ] = {}  # State memory for every scenario
 
         # sequential model essentials
         self._token2cache: Dict[str, FeatureCacheContainer] = {}
 
-    def _step(self, batch: Tuple[FeaturesType, TargetsType], prefix: str, batch_idx: int) -> Dict[str, Any]:
+    def _step(
+        self,
+        batch: Tuple[FeaturesType, TargetsType, ScenarioListType],
+        prefix: str,
+        batch_idx: int,
+    ) -> Dict[str, Any]:
         """
         Propagates the model forward and backwards and computes/logs losses and metrics.
 
@@ -92,7 +101,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         objectives = self._compute_objectives(predictions, targets, scenarios)
         metrics = self._compute_metrics(predictions, targets)
         loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
-        if prefix == 'val':
+        if prefix == "val":
             self._update_aggregated_metrics(predictions, targets)
 
         self._log_step(loss, objectives, metrics, prefix, batch_idx=batch_idx)
@@ -106,8 +115,20 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
             return_dict["out_feature"] = return_dict["out_feature"].detach()
         if "latent_feature" in return_dict:
             return_dict["latent_feature"] = return_dict["latent_feature"].detach()
-        if 'bev_feature' in return_dict:
-            return_dict["bev_feature"] = return_dict["bev_feature"].to_device("cpu").detach()
+        if "bev_feature" in return_dict:
+            return_dict["bev_feature"] = (
+                return_dict["bev_feature"].to_device("cpu").detach()
+            )
+
+        # Add batch metrics & objectives to return dict, for aggregation
+        if prefix == "test":
+            return_dict.update(
+                {f"objectives/test_{key}": value for key, value in objectives.items()}
+            )
+            return_dict.update(
+                {f"metrics/test_{key}": value for key, value in metrics.items()}
+            )
+            return_dict["batch_size"] = len(scenarios)
 
         return return_dict
 
@@ -117,9 +138,9 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         objectives: Dict[str, torch.Tensor],
         metrics: Dict[str, torch.Tensor],
         prefix: str,
-        loss_name: str = 'loss',
+        loss_name: str = "loss",
         batch_idx: int = 0,
-        **kwargs
+        **kwargs,
     ) -> None:
         """
         Logs the artifacts from a training/validation/test step.
@@ -130,19 +151,21 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param prefix: prefix prepended at each artifact's name
         :param loss_name: name given to the loss for logging
         """
-        self.log('idx', batch_idx, prog_bar=True)
-        self.log(f'loss/{prefix}_{loss_name}', loss)
+        self.log("idx", batch_idx, prog_bar=True, batch_size=self.batch_size)
+        self.log(f"loss/{prefix}_{loss_name}", loss, batch_size=self.batch_size)
 
         for key, value in objectives.items():
-            self.log(f'objectives/{prefix}_{key}', value)
+            self.log(f"objectives/{prefix}_{key}", value, batch_size=self.batch_size)
 
         for key, value in metrics.items():
-            self.log(f'metrics/{prefix}_{key}', value)
+            self.log(f"metrics/{prefix}_{key}", value, batch_size=self.batch_size)
 
         for key, value in kwargs.items():
-            self.log(f'{key}', value)
+            self.log(f"{key}", value, batch_size=self.batch_size)
 
-    def training_step(self, batch: Tuple[FeaturesType, TargetsType], batch_idx: int) -> torch.Tensor:
+    def training_step(
+        self, batch: Tuple[FeaturesType, TargetsType], batch_idx: int
+    ) -> torch.Tensor:
         """
         Step called for each batch example during training.
 
@@ -150,7 +173,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param batch_idx: batch's index (unused)
         :return: model's loss tensor
         """
-        return self._step(batch, 'train', batch_idx)
+        return self._step(batch, "train", batch_idx)
 
     def validation_step(
         self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], batch_idx: int
@@ -162,9 +185,11 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param batch_idx: batch's index (unused)
         :return: model's loss tensor
         """
-        return self._step(batch, 'val', batch_idx)
+        return self._step(batch, "val", batch_idx)
 
-    def test_step(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], batch_idx: int) -> torch.Tensor:
+    def test_step(
+        self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], batch_idx: int
+    ) -> torch.Tensor:
         """
         Step called for each batch example during testing.
 
@@ -172,9 +197,9 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param batch_idx: batch's index (unused)
         :return: model's loss tensor
         """
-        return self._step(batch, 'test', batch_idx)
+        return self._step(batch, "test", batch_idx)
 
-    def on_epoch_start(self) -> None:
+    def on_train_epoch_start(self) -> None:
         # Ensures all CUDA tensors are recycled
         if self._token2state is not None:
             logger.info("Resetting _token2state before epoch starts.")
@@ -182,3 +207,31 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         if self._token2cache is not None:
             logger.info("Resetting _token2cache before epoch starts.")
             self._token2cache.clear()
+
+    def test_epoch_end(self, outputs: List[EPOCH_OUTPUT]) -> None:
+        """Called at the end of the test epoch to aggregate results
+        
+        NOTE: currently only e2e models would use this feature. In the end
+        each metric should implement its aggregation mode, and use 
+        _update_aggregated_metrics function to update. Val and test mode 
+        should essentially be the same.
+        """
+        assert all(
+            ["batch_size" in batch for batch in outputs]
+        ), "Requires batch size to calculate the mean of each metric"
+        total_samples = sum([batch["batch_size"] for batch in outputs])
+        aggregated_dict = {}
+        for key in outputs[0].keys():
+            if (
+                key == "loss"
+                or key.startswith("metrics")
+                or key.startswith("objectives")
+            ):
+                aggregated_dict[key] = (
+                    torch.stack(
+                        [batch[key] * batch["batch_size"] for batch in outputs]
+                    ).sum()
+                    / total_samples
+                )
+
+        self.log_dict(aggregated_dict)
