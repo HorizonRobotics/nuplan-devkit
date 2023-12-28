@@ -61,7 +61,15 @@ def compute_or_load_feature(
             feature_path = cache_path / scenario.log_name / scenario.scenario_type / scenario_token / token
         file_name = feature_path / builder.get_feature_unique_name()
     else:
-        file_name = None
+        if scenario.get_number_of_iterations() > 1:
+            token = "_".join([str(iteration), scenario._lidarpc_tokens[iteration]])
+        else:
+            token = ""
+    file_name = (
+        cache_path / scenario.log_name / scenario.scenario_type / scenario.token / builder.get_feature_unique_name()
+        if cache_path_available
+        else None
+    )
 
     builder_force_recompute = getattr(builder, 'force_recompute', False)
 

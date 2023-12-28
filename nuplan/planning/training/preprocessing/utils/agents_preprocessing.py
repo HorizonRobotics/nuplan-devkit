@@ -788,7 +788,6 @@ def sampled_past_ego_states_to_tensor(past_ego_states: List[EgoState]) -> torch.
         output[i, EgoInternalIndex.vy()] = past_ego_states[i].dynamic_car_state.rear_axle_velocity_2d.y
         output[i, EgoInternalIndex.ax()] = past_ego_states[i].dynamic_car_state.rear_axle_acceleration_2d.x
         output[i, EgoInternalIndex.ay()] = past_ego_states[i].dynamic_car_state.rear_axle_acceleration_2d.y
-
     return output
 
 
@@ -851,7 +850,7 @@ def sampled_tracked_objects_to_tensor_list(
     for i in range(len(past_tracked_objects)):
         tensorized, track_token_ids = _extract_agent_tensor(past_tracked_objects[i], track_token_ids, object_type)
         output.append(tensorized)
-    return output
+    return output, track_token_ids
 
 
 def pack_agents_tensor(padded_agents_tensors: List[torch.Tensor], yaw_rates: torch.Tensor) -> torch.Tensor:
