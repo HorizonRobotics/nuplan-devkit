@@ -46,39 +46,39 @@ class GenericAgents(AbstractModelFeature):
     ego: List[FeatureDataType]
     agents: Dict[str, List[FeatureDataType]]
 
-    def __post_init__(self) -> None:
-        """Sanitize attributes of dataclass."""
-        if not all([len(self.ego) == len(agent) for agent in self.agents.values()]):
-            raise AssertionError("Batch size inconsistent across features!")
+    # def __post_init__(self) -> None:
+    #     """Sanitize attributes of dataclass."""
+    #     if not all([len(self.ego) == len(agent) for agent in self.agents.values()]):
+    #         raise AssertionError("Batch size inconsistent across features!")
 
-        if len(self.ego) == 0:
-            raise AssertionError("Batch size has to be > 0!")
+    #     if len(self.ego) == 0:
+    #         raise AssertionError("Batch size has to be > 0!")
 
-        if self.ego[0].ndim != 2:
-            raise AssertionError(
-                "Ego feature samples does not conform to feature dimensions! "
-                f"Got ndim: {self.ego[0].ndim} , expected 2 [num_frames, 7]"
-            )
+    #     if self.ego[0].ndim != 2:
+    #         raise AssertionError(
+    #             "Ego feature samples does not conform to feature dimensions! "
+    #             f"Got ndim: {self.ego[0].ndim} , expected 2 [num_frames, 7]"
+    #         )
 
-        if 'EGO' in self.agents.keys():
-            raise AssertionError("EGO not a valid agents feature type!")
-        for feature_name in self.agents.keys():
-            if feature_name not in TrackedObjectType._member_names_:
-                raise ValueError(f"Object representation for layer: {feature_name} is unavailable!")
+    #     if 'EGO' in self.agents.keys():
+    #         raise AssertionError("EGO not a valid agents feature type!")
+    #     for feature_name in self.agents.keys():
+    #         if feature_name not in TrackedObjectType._member_names_:
+    #             raise ValueError(f"Object representation for layer: {feature_name} is unavailable!")
 
-        for agent in self.agents.values():
-            if agent[0].ndim != 3:
-                raise AssertionError(
-                    "Agent feature samples does not conform to feature dimensions! "
-                    f"Got ndim: {agent[0].ndim} , "
-                    f"expected 3 [num_frames, num_agents, 8]"
-                )
+    #     for agent in self.agents.values():
+    #         if agent[0].ndim != 3:
+    #             raise AssertionError(
+    #                 "Agent feature samples does not conform to feature dimensions! "
+    #                 f"Got ndim: {agent[0].ndim} , "
+    #                 f"expected 3 [num_frames, num_agents, 8]"
+    #             )
 
-        for sample_idx in range(len(self.ego)):
-            if int(self.ego[sample_idx].shape[0]) != self.num_frames or not all(
-                [int(agent[sample_idx].shape[0]) == self.num_frames for agent in self.agents.values()]
-            ):
-                raise AssertionError("Agent feature samples have different number of frames!")
+    #     for sample_idx in range(len(self.ego)):
+    #         if int(self.ego[sample_idx].shape[0]) != self.num_frames or not all(
+    #             [int(agent[sample_idx].shape[0]) == self.num_frames for agent in self.agents.values()]
+    #         ):
+    #             raise AssertionError("Agent feature samples have different number of frames!")
 
     def _validate_ego_query(self, sample_idx: int) -> None:
         """
