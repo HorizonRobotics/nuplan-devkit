@@ -3,6 +3,7 @@ from typing import Any
 
 from hydra.utils import instantiate
 from omegaconf import DictConfig
+import pickle
 
 from nuplan.planning.scenario_builder.scenario_filter import ScenarioFilter
 from nuplan.planning.script.builders.utils.utils_type import validate_type
@@ -33,6 +34,10 @@ def build_scenario_filter(cfg: DictConfig) -> ScenarioFilter:
     :return: Instance of ScenarioFilter.
     """
     logger.info('Building ScenarioFilter...')
+    if isinstance(cfg.scenario_tokens, str) and cfg.scenario_tokens.endswith(".pkl"):
+        with open(cfg.scenario_tokens, 'rb') as f:
+            tokens = pickle.load(f)
+        cfg.scenario_tokens = tokens
     if cfg.scenario_tokens and not all(map(is_valid_token, cfg.scenario_tokens)):
         raise RuntimeError(
             "Expected all scenario tokens to be 16-character strings. Your shell may strip quotes "
