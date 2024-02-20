@@ -24,7 +24,8 @@ defaults:
   - splitter: nuplan
 
   # Hyperparameters need to be specified
-  - observation: null
+  # - observation: null
+  - observation: simulator_observation
   - ego_controller: null
   - planner: null
   - simulation_time_controller: step_simulation_time_controller

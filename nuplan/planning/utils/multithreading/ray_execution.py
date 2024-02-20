@@ -37,7 +37,7 @@ def wrap_function(fn: Callable[..., Any], log_dir: Optional[Path] = None) -> Cal
     :param log_dir: directory to store logs (wrapper function does nothing if it's not set).
     :return: wrapped function which changes logging settings while it runs.
     """
-
+    @ray.remote(max_calls=1)
     def wrapped_fn(*args: Any, **kwargs: Any) -> Any:
         if log_dir is None:
             return fn(*args, **kwargs)
@@ -86,11 +86,13 @@ def _ray_map_items(task: Task, *item_lists: Iterable[List[Any]], log_dir: Option
         _, _, pack = fn.__reduce__()  # type: ignore
         fn, _, args, _ = pack
         fn = wrap_function(fn, log_dir=log_dir)
-        remote_fn: RemoteFunction = ray.remote(fn).options(num_gpus=task.num_gpus, num_cpus=task.num_cpus)
+        # remote_fn: RemoteFunction = ray.remote(fn).options(num_gpus=task.num_gpus, num_cpus=task.num_cpus)
+        remote_fn: RemoteFunction = fn.options(num_gpus=task.num_gpus, num_cpus=task.num_cpus)
         object_ids = [remote_fn.remote(*items, **args) for items in zip(*item_lists)]
     else:
         fn = wrap_function(fn, log_dir=log_dir)
-        remote_fn = ray.remote(fn).options(num_gpus=task.num_gpus, num_cpus=task.num_cpus)
+        # remote_fn = ray.remote(fn).options(num_gpus=task.num_gpus, num_cpus=task.num_cpus)
+        remote_fn = fn.options(num_gpus=task.num_gpus, num_cpus=task.num_cpus)
         object_ids = [remote_fn.remote(*items) for items in zip(*item_lists)]
 
     # Create ordered map to track order of objects inserted in the queue

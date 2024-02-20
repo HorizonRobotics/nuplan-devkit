@@ -5,7 +5,7 @@ from typing import Deque, List, Optional, Tuple, Type
 
 from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
-from nuplan.planning.simulation.observation.observation_type import DetectionsTracks, Observation, Sensors
+from nuplan.planning.simulation.observation.observation_type import DetectionsTracks, Observation, Sensors, SensorsWithTracks
 
 
 class SimulationHistoryBuffer:
@@ -173,6 +173,8 @@ class SimulationHistoryBuffer:
         if observation_type == DetectionsTracks:
             observation_getter = scenario.get_past_tracked_objects
         elif observation_type == Sensors:
+            observation_getter = scenario.get_past_sensors
+        elif observation_type == SensorsWithTracks:
             observation_getter = scenario.get_past_sensors
         else:
             raise ValueError(f"No matching observation type for {observation_type} for history!")

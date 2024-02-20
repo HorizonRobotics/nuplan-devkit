@@ -29,16 +29,22 @@ class Sequential(WorkerPool):
         """Inherited, see superclass."""
         if task.num_cpus not in [None, 1]:
             raise ValueError(f'Expected num_cpus to be 1 or unset for Sequential worker, got {task.num_cpus}')
-        output = [
-            task.fn(*args)
-            for args in tqdm(
-                zip(*item_lists),
-                leave=False,
-                total=get_max_size_of_arguments(*item_lists),
-                desc='Sequential',
-                disable=not verbose,
-            )
-        ]
+        # output = [
+        #     task.fn(*args)
+        #     for args in tqdm(
+        #         zip(*item_lists),
+        #         leave=False,
+        #         total=get_max_size_of_arguments(*item_lists),
+        #         desc='Sequential',
+        #         disable=not verbose,
+        #     )
+        # ]
+        output = []
+        for args in tqdm(zip(*item_lists), leave=False, total=get_max_size_of_arguments(*item_lists), desc='Sequential', disable=not verbose):
+            res = task.fn(*args)
+            output.append(res)
+            breakpoint()
+
         return output
 
     def submit(self, task: Task, *args: Any, **kwargs: Any) -> Future[Any]:

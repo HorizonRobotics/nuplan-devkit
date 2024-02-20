@@ -10,6 +10,10 @@ from nuplan.planning.simulation.runner.abstract_runner import AbstractRunner
 from nuplan.planning.simulation.runner.runner_report import RunnerReport
 from nuplan.planning.simulation.simulation import Simulation
 
+import os
+import pickle
+import torch
+
 logger = logging.getLogger(__name__)
 
 
@@ -110,7 +114,16 @@ class SimulationRunner(AbstractRunner):
             self._simulation.callback.on_planner_start(self.simulation.setup, self.planner)
 
             # Plan path based on all planner's inputs
-            trajectory = self.planner.compute_trajectory(planner_input)
+            # trajectory = self.planner.compute_trajectory(planner_input)
+            trajectory, raw_predictions = self.planner.compute_trajectory(planner_input)
+
+            # import ray; ray.util.pdb.set_trace()
+            out_path = '/mnt/nas26/siqi01.chai/sim-predictions/online-predictions-tmp'
+            out_path = os.path.join(out_path, self.simulation.scenario.token)
+            os.makedirs(out_path, exist_ok=True)
+            out_file = os.path.join(out_path, 'raw-pred-{}.pkl'.format(planner_input.iteration.index))
+            with open(out_file, 'wb') as f:
+                pickle.dump(raw_predictions, f)
 
             # Propagate simulation based on planner trajectory
             self._simulation.callback.on_planner_end(self.simulation.setup, self.planner, trajectory)
@@ -129,5 +142,10 @@ class SimulationRunner(AbstractRunner):
 
         planner_report = self.planner.generate_planner_report()
         report.planner_report = planner_report
+
+        del self._simulation
+        del self._planner
+        # breakpoint()
+        torch.cuda.empty_cache()
 
         return report

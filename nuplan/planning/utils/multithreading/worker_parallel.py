@@ -32,7 +32,7 @@ class SingleMachineParallelExecutor(WorkerPool):
 
         super().__init__(
             WorkerResources(
-                number_of_nodes=1, number_of_cpus_per_node=number_of_cpus_per_node, number_of_gpus_per_node=0
+                number_of_nodes=1, number_of_cpus_per_node=number_of_cpus_per_node, number_of_gpus_per_node=2
             )
         )
 

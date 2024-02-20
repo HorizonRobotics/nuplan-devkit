@@ -1,0 +1,2 @@
+_target_: nuplan.planning.simulation.observation.simulator_observation.SimulatorObservation
+_convert_: 'all'

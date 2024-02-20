@@ -32,7 +32,6 @@ class CacheResult:
     successes: int
     failures: int
     cache_metadata: List[Optional[CacheMetadataEntry]]
-    failed_scenarios: Optional[List[str]] = None
 
 
 @dataclass(frozen=True)

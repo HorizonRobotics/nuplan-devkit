@@ -9,8 +9,10 @@ coverage  # Used in computing code coverage
 docker  # To run remote submissions
 Fiona  # Used in GpkgMapsDB.py
 geopandas>=0.12.1  # Used to read maps
-grpcio==1.43.0  # Used for communication with submission container
-grpcio-tools==1.43.0  # Used for communication with submission container
+# grpcio==1.43.0  # Used for communication with submission container
+# grpcio-tools==1.43.0  # Used for communication with submission container
+grpcio==1.48.2  # Used for communication with submission container
+grpcio-tools==1.48.2  # Used for communication with submission container
 guppy3==3.1.2
 hydra-core==1.1.0rc1  # Used for configs
 hypothesis

@@ -22,6 +22,7 @@ from nuplan.database.nuplan_db.nuplan_scenario_queries import (
     get_sampled_sensor_tokens_in_time_window_from_db,
     get_sensor_data_token_timestamp_from_db,
     get_tracked_objects_for_lidarpc_token_from_db,
+    get_3d_tracked_objects_for_lidarpc_token_from_db,
     get_tracked_objects_within_time_interval_from_db,
 )
 from nuplan.database.utils.image import Image
@@ -346,6 +347,60 @@ def extract_tracked_objects(
     agent_future_trajectories: Dict[str, List[Waypoint]] = {}
 
     for idx, tracked_object in enumerate(get_tracked_objects_for_lidarpc_token_from_db(log_file, token)):
+        if future_trajectory_sampling and isinstance(tracked_object, Agent):
+            agent_indexes[tracked_object.metadata.track_token] = idx
+            agent_future_trajectories[tracked_object.metadata.track_token] = []
+        tracked_objects.append(tracked_object)
+
+    if future_trajectory_sampling and len(tracked_objects) > 0:
+        timestamp_time = get_sensor_data_token_timestamp_from_db(log_file, get_lidarpc_sensor_data(), token)
+        end_time = timestamp_time + int(
+            1e6 * (future_trajectory_sampling.time_horizon + future_trajectory_sampling.interval_length)
+        )
+
+        # TODO: This is somewhat inefficient because the resampling should happen in SQL layer
+        for track_token, waypoint in get_future_waypoints_for_agents_from_db(
+            log_file, list(agent_indexes.keys()), timestamp_time, end_time
+        ):
+            agent_future_trajectories[track_token].append(waypoint)
+
+        for key in agent_future_trajectories:
+            # We can only interpolate waypoints if there is more than one in the future.
+            if len(agent_future_trajectories[key]) == 1:
+                tracked_objects[agent_indexes[key]]._predictions = [
+                    PredictedTrajectory(1.0, agent_future_trajectories[key])
+                ]
+            elif len(agent_future_trajectories[key]) > 1:
+                tracked_objects[agent_indexes[key]]._predictions = [
+                    PredictedTrajectory(
+                        1.0,
+                        interpolate_future_waypoints(
+                            agent_future_trajectories[key],
+                            future_trajectory_sampling.time_horizon,
+                            future_trajectory_sampling.interval_length,
+                        ),
+                    )
+                ]
+
+    return TrackedObjects(tracked_objects=tracked_objects)
+
+
+def extract_3d_tracked_objects(
+    token: str,
+    log_file: str,
+    future_trajectory_sampling: Optional[TrajectorySampling] = None,
+) -> TrackedObjects:
+    """
+    Extracts all boxes from a lidarpc.
+    :param lidar_pc: Input lidarpc.
+    :param future_trajectory_sampling: If provided, the future trajectory sampling to use for future waypoints.
+    :return: Tracked objects contained in the lidarpc.
+    """
+    tracked_objects: List[TrackedObject] = []
+    agent_indexes: Dict[str, int] = {}
+    agent_future_trajectories: Dict[str, List[Waypoint]] = {}
+
+    for idx, tracked_object in enumerate(get_3d_tracked_objects_for_lidarpc_token_from_db(log_file, token)):
         if future_trajectory_sampling and isinstance(tracked_object, Agent):
             agent_indexes[tracked_object.metadata.track_token] = idx
             agent_future_trajectories[tracked_object.metadata.track_token] = []
