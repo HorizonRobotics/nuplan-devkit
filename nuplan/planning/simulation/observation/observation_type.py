@@ -65,3 +65,14 @@ class DetectionsTracks(Observation):
     """
 
     tracked_objects: TrackedObjects
+
+
+@dataclass
+class SensorsWithTracks(Observation):
+    """
+    Output of sensors, e.g. images or pointclouds.
+    """
+
+    pointcloud: Optional[Dict[LidarChannel, LidarPointCloud]]
+    images: Optional[Dict[CameraChannel, Image]]
+    tracked_objects: TrackedObjects

@@ -72,7 +72,6 @@ class InterpolatedTrajectory(AbstractTrajectory):
             f"Interpolation time {time_point=} not in trajectory time window! \n"
             f"{start_time.time_us=} <= {time_point.time_us=} <= {end_time.time_us=}"
         )
-
         linear_states = list(self._function_interp_linear(time_point.time_us))
         angular_states = list(self._angular_interpolator.interpolate(time_point.time_us))
 

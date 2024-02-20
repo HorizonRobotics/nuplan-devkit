@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import pathlib
 import textwrap
-import numpy as np
 from typing import Optional, Tuple, Union
 
 from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
@@ -25,8 +24,6 @@ def compute_or_load_feature(
     builder: Union[AbstractFeatureBuilder, AbstractTargetBuilder],
     storing_mechanism: FeatureCache,
     force_feature_computation: bool,
-    iteration: int = 0,
-    versatile_cache: bool = False,
 ) -> Tuple[AbstractModelFeature, Optional[CacheMetadataEntry]]:
     """
     Compute features if non existent in cache, otherwise load them from cache
@@ -75,7 +72,7 @@ def compute_or_load_feature(
 
     # If feature recomputation is desired or cached file doesnt exists, compute the feature
     need_to_compute_feature = (
-        force_feature_computation or not cache_path_available or not storing_mechanism.exists_feature_cache(file_name) or builder_force_recompute
+        force_feature_computation or not cache_path_available or not storing_mechanism.exists_feature_cache(file_name)
     )
     feature_stored_sucessfully = False
     if need_to_compute_feature:
@@ -96,9 +93,9 @@ def compute_or_load_feature(
                 )
             )
         if isinstance(builder, AbstractFeatureBuilder):
-            feature = builder.get_features_from_scenario(scenario, iteration)
+            feature = builder.get_features_from_scenario(scenario)
         elif isinstance(builder, AbstractTargetBuilder):
-            feature = builder.get_targets(scenario, iteration)
+            feature = builder.get_targets(scenario)
         else:
             raise ValueError(f"Unknown builder type: {type(builder)}")
 
@@ -108,22 +105,12 @@ def compute_or_load_feature(
             file_name.parent.mkdir(parents=True, exist_ok=True)
             feature_stored_sucessfully = storing_mechanism.store_computed_feature_to_folder(file_name, feature)
     else:
+        # In case the feature exists in the cache, load it
         logger.debug(f"Loading feature: {file_name} from a file...")
-        try:
-            feature = storing_mechanism.load_computed_feature_from_folder(file_name, builder.get_feature_type())
-        except Exception:
-            if isinstance(builder, AbstractFeatureBuilder):
-                feature = builder.get_features_from_scenario(scenario, iteration)
-            elif isinstance(builder, AbstractTargetBuilder):
-                feature = builder.get_targets(scenario)
-            # If caching is enabled, store the feature
-            if feature.is_valid and cache_path_available:
-                logger.debug(f"Saving feature: {file_name} to a file...")
-                file_name.parent.mkdir(parents=True, exist_ok=True)
-                feature_stored_sucessfully = storing_mechanism.store_computed_feature_to_folder(file_name, feature)
+        feature = storing_mechanism.load_computed_feature_from_folder(file_name, builder.get_feature_type())
         assert feature.is_valid, 'Invalid feature loaded from cache!'
 
     return (
         feature,
-        CacheMetadataEntry(file_name=file_name),
+        CacheMetadataEntry(file_name=file_name) if (need_to_compute_feature and feature_stored_sucessfully) else None,
     )

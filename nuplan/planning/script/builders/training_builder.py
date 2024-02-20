@@ -14,10 +14,9 @@ from nuplan.planning.script.builders.scenario_builder import build_scenarios
 from nuplan.planning.script.builders.splitter_builder import build_splitter
 from nuplan.planning.script.builders.training_callback_builder import build_callbacks
 from nuplan.planning.script.builders.training_metrics_builder import build_training_metrics
-from nuplan.planning.script.builders.aggregated_metrics_builder import build_aggregated_metrics
 from nuplan.planning.script.builders.utils.utils_checkpoint import extract_last_checkpoint_from_experiment
 from nuplan.planning.training.data_loader.datamodule import DataModule
-from nuplan.planning.training.modeling.lightning_module_wrapper_closeloop import LightningModuleWrapperCloseloop
+from nuplan.planning.training.modeling.lightning_module_wrapper import LightningModuleWrapper
 from nuplan.planning.training.modeling.torch_module_wrapper import TorchModuleWrapper
 from nuplan.planning.training.preprocessing.feature_preprocessor import FeaturePreprocessor
 from nuplan.planning.utils.multithreading.worker_pool import WorkerPool
@@ -48,12 +47,10 @@ def build_lightning_datamodule(
         force_feature_computation=cfg.cache.force_feature_computation,
         feature_builders=feature_builders,
         target_builders=target_builders,
-        versatile_cache=cfg.cache.versatile_caching,
     )
 
     # Create data augmentation
     augmentors = build_agent_augmentor(cfg.data_augmentation) if 'data_augmentation' in cfg else None
-    val_augmentors = build_agent_augmentor(cfg.val_data_augmentation) if 'val_data_augmentation' in cfg else None
 
     # Build dataset scenarios
     scenarios = build_scenarios(cfg, worker, model)
@@ -65,7 +62,6 @@ def build_lightning_datamodule(
         all_scenarios=scenarios,
         dataloader_params=cfg.data_loader.params,
         augmentors=augmentors,
-        val_augmentors=val_augmentors,
         worker=worker,
         scenario_type_sampling_weights=cfg.scenario_type_weights.scenario_type_sampling_weights,
         **cfg.data_loader.datamodule,
@@ -86,9 +82,6 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
 
     # Build metrics to evaluate the performance of predictions
     metrics = build_training_metrics(cfg)
-    
-    # Build aggregated metrics to evaluate the performance of predictions
-    aggregated_metrics = build_aggregated_metrics(cfg) if "aggregated_metric" in cfg else {}
 
     params = {
         "model": torch_module_wrapper,

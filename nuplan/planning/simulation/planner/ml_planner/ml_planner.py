@@ -1,5 +1,5 @@
 import time
-from typing import List, Optional, Type, cast
+from typing import List, Optional, Type, cast, Tuple, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -44,7 +44,7 @@ class MLPlanner(AbstractPlanner):
         self._feature_building_runtimes: List[float] = []
         self._inference_runtimes: List[float] = []
 
-    def _infer_model(self, features: FeaturesType) -> npt.NDArray[np.float32]:
+    def _infer_model(self, features: FeaturesType) -> Tuple[npt.NDArray[np.float32], Any]:
         """
         Makes a single inference on a Pytorch/Torchscript model.
 
@@ -59,7 +59,16 @@ class MLPlanner(AbstractPlanner):
         trajectory_tensor = trajectory_predicted.data
         trajectory = trajectory_tensor.cpu().detach().numpy()[0]  # retrive first (and only) batch as a numpy array
 
-        return cast(npt.NDArray[np.float32], trajectory)
+        # temp fix for E2E model, not from nuplan
+        trajectory = np.column_stack(
+            (
+                trajectory[:, 1],
+                trajectory[:, 0],
+                trajectory[:, 2]
+            )
+        )
+
+        return cast(npt.NDArray[np.float32], trajectory), predictions
 
     def initialize(self, initialization: PlannerInitialization) -> None:
         """Inherited, see superclass."""
@@ -74,7 +83,7 @@ class MLPlanner(AbstractPlanner):
         """Inherited, see superclass."""
         return DetectionsTracks  # type: ignore
 
-    def compute_planner_trajectory(self, current_input: PlannerInput) -> AbstractTrajectory:
+    def compute_planner_trajectory(self, current_input: PlannerInput) -> Tuple[AbstractTrajectory, Any]:
         """
         Infer relative trajectory poses from model and convert to absolute agent states wrapped in a trajectory.
         Inherited, see superclass.
@@ -89,7 +98,10 @@ class MLPlanner(AbstractPlanner):
 
         # Infer model
         start_time = time.perf_counter()
-        predictions = self._infer_model(features)
+        predictions, raw_predictions = self._infer_model(features)
+        # debug use only
+        # predictions = np.zeros((16,3), dtype=np.float32)
+        # raw_predictions = None
         self._inference_runtimes.append(time.perf_counter() - start_time)
 
         # Convert relative poses to absolute states and wrap in a trajectory object.
@@ -98,7 +110,7 @@ class MLPlanner(AbstractPlanner):
         )
         trajectory = InterpolatedTrajectory(states)
 
-        return trajectory
+        return trajectory, raw_predictions
 
     def generate_planner_report(self, clear_stats: bool = True) -> PlannerReport:
         """Inherited, see superclass."""

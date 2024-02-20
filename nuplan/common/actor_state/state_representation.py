@@ -312,11 +312,16 @@ class TimePoint:
 
 @dataclass
 class Point2D:
-    """Class to represents 2D points."""
+    """Class to represents 2D points with latent support of 3D points"""
 
     x: float  # [m] location
     y: float  # [m] location
-    __slots__ = "x", "y"
+    z: float  # [m] location
+
+    def __init__(self, x, y, z=0.0):
+        self.x = x
+        self.y = y
+        self.z = z
 
     def __iter__(self) -> Iterable[float]:
         """
@@ -325,11 +330,13 @@ class Point2D:
         return iter((self.x, self.y))
 
     @property
-    def array(self) -> npt.NDArray[np.float64]:
+    def array(self, se3=False) -> npt.NDArray[np.float64]:
         """
         Convert vector to array
         :return: array containing [x, y]
         """
+        if se3:
+            return np.array([self.x, self.y, self.z], dtype=np.float64)
         return np.array([self.x, self.y], dtype=np.float64)
 
     def __hash__(self) -> int:
@@ -341,17 +348,24 @@ class Point2D:
 class StateSE2(Point2D):
     """
     SE2 state - representing [x, y, heading]
+    with latent support for SE3 state, we ignore roll, pitch
     """
 
-    heading: float  # [rad] heading of a state
-    __slots__ = "heading"
+    # heading: float  # [rad] heading of a state
+    # __slots__ = "heading"
+
+    def __init__(self, x, y, heading, z=0.0):
+        super().__init__(x, y, z)
+        self.heading = heading
 
     @property
-    def point(self) -> Point2D:
+    def point(self, se3=False) -> Point2D:
         """
         Gets a point from the StateSE2
         :return: Point with x and y from StateSE2
         """
+        if se3:
+            return Point2D(self.x, self.y, self.z)
         return Point2D(self.x, self.y)
 
     def as_matrix(self) -> npt.NDArray[np.float32]:
@@ -366,10 +380,19 @@ class StateSE2(Point2D):
             ]
         )
 
-    def as_matrix_3d(self) -> npt.NDArray[np.float32]:
+    def as_matrix_3d(self, se3=False) -> npt.NDArray[np.float32]:
         """
         :return: 4x4 3D transformation matrix representing the SE2 state projected to SE3.
         """
+        if se3:
+            return np.array(
+                [
+                    [np.cos(self.heading), -np.sin(self.heading), 0.0, self.x],
+                    [np.sin(self.heading), np.cos(self.heading), 0.0, self.y],
+                    [0.0, 0.0, 1.0, self.z],
+                    [0.0, 0.0, 0.0, 1.0],
+                ]
+            )
         return np.array(
             [
                 [np.cos(self.heading), -np.sin(self.heading), 0.0, self.x],
@@ -379,41 +402,56 @@ class StateSE2(Point2D):
             ]
         )
 
-    def distance_to(self, state: StateSE2) -> float:
+    def distance_to(self, state: StateSE2, se3=False) -> float:
         """
         Compute the euclidean distance between two points
         :param state: state to compute distance to
         :return distance between two points
         """
+        if se3:
+            return float(np.linalg.norm(np.array([self.x - state.x, self.y - state.y, self.z - state.z])))
         return float(np.hypot(self.x - state.x, self.y - state.y))
 
     @staticmethod
-    def from_matrix(matrix: npt.NDArray[np.float32]) -> StateSE2:
+    def from_matrix(matrix: npt.NDArray[np.float32], se3=False) -> StateSE2:
         """
         :param matrix: 3x3 2D transformation matrix
         :return: StateSE2 object
         """
+        if se3:
+            assert matrix.shape == (4, 4), f"Expected 4x4 transformation matrix, but input matrix has shape {matrix.shape}"
+            
+            vector = [matrix[0, 2], matrix[1, 2], matrix[2, 2], np.arctan2(matrix[1, 0], matrix[0, 0])]
+            return StateSE2.deserialize(vector, se3=True)
         assert matrix.shape == (3, 3), f"Expected 3x3 transformation matrix, but input matrix has shape {matrix.shape}"
 
         vector = [matrix[0, 2], matrix[1, 2], np.arctan2(matrix[1, 0], matrix[0, 0])]
         return StateSE2.deserialize(vector)
 
     @staticmethod
-    def deserialize(vector: List[float]) -> StateSE2:
+    def deserialize(vector: List[float], se3=False) -> StateSE2:
         """
         Deserialize vector into state SE2
         :param vector: serialized list of floats
         :return: StateSE2
         """
+        if se3:
+            if len(vector) != 4:
+                raise RuntimeError(f'Expected a vector of size 4, got {len(vector)}')
+
+            return StateSE2(x=vector[0], y=vector[1], z=vector[2], heading=vector[3])
+
         if len(vector) != 3:
             raise RuntimeError(f'Expected a vector of size 3, got {len(vector)}')
 
         return StateSE2(x=vector[0], y=vector[1], heading=vector[2])
 
-    def serialize(self) -> List[float]:
+    def serialize(self, se3=False) -> List[float]:
         """
         :return: list of serialized variables [X, Y, Heading]
         """
+        if se3:
+            return [self.x, self.y, self.z, self.heading]
         return [self.x, self.y, self.heading]
 
     def __eq__(self, other: object) -> bool:
@@ -428,6 +466,7 @@ class StateSE2(Point2D):
         return (
             math.isclose(self.x, other.x, abs_tol=1e-3)
             and math.isclose(self.y, other.y, abs_tol=1e-3)
+            and math.isclose(self.z, other.z, abs_tol=1e-3)
             and math.isclose(self.heading, other.heading, abs_tol=1e-4)
         )
 

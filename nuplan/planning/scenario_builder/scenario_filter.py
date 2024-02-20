@@ -26,6 +26,9 @@ class ScenarioFilter:
     # Threshold for the interval of time between scenario initial lidar timestamps in seconds:
     timestamp_threshold_s: Optional[float]
 
+    # dict of list of intervals, for each interval, there must be a corresponding simulator model:
+    # simulator_learned_timestamps: Optional[Dict[str, List[List[int]]]]
+
     # Inclusive minimum threshold for total distance covered (meters, frame-by-frame) by the ego center
     #   for scenario to be kept:
     ego_displacement_minimum_m: Optional[float]
@@ -58,12 +61,6 @@ class ScenarioFilter:
     # Uses a VectorMap to collect lane segments and route status
     # Used to filter out scenarios with no route
     ego_route_radius: Optional[float] = None
-
-    # e2e related
-    # Whether to check if all tokens in a scenario has all valid camera data
-    camera_valid_check: bool = False
-    # A config that controls whether/how to create neighbor scenarios, refer to closed_loop_training_scenarios.yaml
-    neighbor_scenarios: Optional[Dict] = None
 
     def __post_init__(self) -> None:
         """Sanitize class attributes."""
