@@ -18,6 +18,7 @@ from nuplan.database.nuplan_db.lidar_pc import LidarPc
 from nuplan.database.nuplan_db.nuplan_db_utils import get_lidarpc_sensor_data
 from nuplan.database.nuplan_db.nuplan_scenario_queries import (
     get_ego_state_for_lidarpc_token_from_db,
+    get_3d_ego_transform_for_lidarpc_token_from_db,
     get_end_sensor_time_from_db,
     get_images_from_lidar_tokens,
     get_mission_goal_for_sensor_data_token_from_db,
@@ -37,6 +38,7 @@ from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_utils import (
     download_file_if_necessary,
     extract_sensor_tokens_as_scenario,
     extract_tracked_objects,
+    extract_3d_tracked_objects,
     extract_tracked_objects_within_time_window,
     load_image,
     load_point_cloud,
@@ -256,6 +258,10 @@ class NuPlanScenario(AbstractScenario):
     def get_ego_state_at_iteration(self, iteration: int) -> EgoState:
         """Inherited, see superclass."""
         return get_ego_state_for_lidarpc_token_from_db(self._log_file, self._lidarpc_tokens[iteration])
+    
+    def get_3d_ego_transform_at_iteration(self, iteration: int) -> List[float]:
+        """Inherited, see superclass."""
+        return get_3d_ego_transform_for_lidarpc_token_from_db(self._log_file, self._lidarpc_tokens[iteration])
 
     def get_tracked_objects_at_iteration(
         self,
@@ -266,6 +272,17 @@ class NuPlanScenario(AbstractScenario):
         assert 0 <= iteration < self.get_number_of_iterations(), f"Iteration is out of scenario: {iteration}!"
         return DetectionsTracks(
             extract_tracked_objects(self._lidarpc_tokens[iteration], self._log_file, future_trajectory_sampling)
+        )
+    
+    def get_3d_tracked_objects_at_iteration(
+        self,
+        iteration: int,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ) -> DetectionsTracks:
+        """Inherited, see superclass."""
+        assert 0 <= iteration < self.get_number_of_iterations(), f"Iteration is out of scenario: {iteration}!"
+        return DetectionsTracks(
+            extract_3d_tracked_objects(self._lidarpc_tokens[iteration], self._log_file, future_trajectory_sampling)
         )
 
     def get_tracked_objects_within_time_window_at_iteration(

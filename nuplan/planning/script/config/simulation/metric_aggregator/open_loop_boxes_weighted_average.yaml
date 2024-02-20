@@ -13,3 +13,4 @@ open_loop_boxes_weighted_average:
   # The scenario score is defined as the weighted average score of the metrics listed above, multiplied by the score of the multiple_metrics below.
   multiple_metrics:
     - planner_miss_rate_within_bound
+  challenge_name: open_loop_boxes
