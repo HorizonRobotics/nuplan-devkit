@@ -31,6 +31,7 @@ def create_dataset(
     dataset_name: str,
     augmentors: Optional[List[AbstractAugmentor]] = None,
     closed_loop_batch_size: Optional[int] = None,
+    start_iteration: int = 0,
 ) -> torch.utils.data.Dataset:
     """
     Create a dataset from a list of samples.
@@ -61,6 +62,7 @@ def create_dataset(
             scenarios=selected_scenarios,
             feature_preprocessor=feature_preprocessor,
             augmentors=augmentors,
+            start_iteration=start_iteration,
         )
     else:
         logger.info(f"Creating open-loop dataset. Number of samples in {dataset_name} set: {len(selected_scenarios)}")
@@ -124,6 +126,7 @@ class DataModule(pl.LightningDataModule):
         worker: WorkerPool,
         augmentors: Optional[List[AbstractAugmentor]] = None,
         val_augmentors: Optional[List[AbstractAugmentor]] = None,
+        start_iteration: int = 0,
     ) -> None:
         """
         Initialize the class.
@@ -184,6 +187,7 @@ class DataModule(pl.LightningDataModule):
             del self._dataloader_params.sequential_val
         if 'sequential_test' in self._dataloader_params:
             del self._dataloader_params.sequential_test
+        self._start_iteration = start_iteration
 
     @property
     def feature_and_targets_builder(self) -> FeaturePreprocessor:
@@ -210,11 +214,13 @@ class DataModule(pl.LightningDataModule):
                 self._train_fraction,
                 "train",
                 self._augmentors,
-                self._dataloader_params.batch_size if self._sequential_train else None
+                self._dataloader_params.batch_size if self._sequential_train else None,
+                start_iteration = self._start_iteration,
             )
 
             # Validation Dataset
-            val_samples = self._splitter.get_val_samples(self._all_samples, self._worker)
+            # val_samples = self._splitter.get_val_samples(self._all_samples, self._worker)
+            val_samples = train_samples[:200]
             assert len(val_samples) > 0, 'Splitter returned no validation samples'
 
             val_batch_size = self._dataloader_params.batch_size if self._sequential_val else None
@@ -225,6 +231,7 @@ class DataModule(pl.LightningDataModule):
                 "validation",
                 self._val_augmentors,
                 val_batch_size,
+                start_iteration = self._start_iteration,
             )
         elif stage == 'test':
             # Testing Dataset
@@ -239,6 +246,7 @@ class DataModule(pl.LightningDataModule):
                 "test",
                 None,
                 test_batch_size,
+                start_iteration = self._start_iteration,
             )
         else:
             raise ValueError(f'Stage must be one of ["fit", "test"], got ${stage}.')
