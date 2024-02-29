@@ -234,7 +234,7 @@ class DataModule(pl.LightningDataModule):
                 self._val_fraction,
                 "validation",
                 self._val_augmentors,
-                batch_size,
+                batch_size if self._sequential_val else None,
                 start_iteration = self._start_iteration,
             )
         elif stage == 'test':
