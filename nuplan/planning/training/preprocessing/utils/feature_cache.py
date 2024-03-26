@@ -7,6 +7,7 @@ import pathlib
 import pickle
 from io import BytesIO
 from typing import Type, cast
+import lmdb
 
 import joblib
 
@@ -138,3 +139,95 @@ class FeatureCacheS3(FeatureCache):
         feature = joblib.load(serialized_feature)
 
         return feature
+
+class FeatureCacheLMDB(FeatureCache):
+    def __init__(self, cache_path: pathlib.Path, db_name: str, map_size: int=1024**4):
+        """_summary_
+
+        Args:
+            cache_path (pathlib.Path): _description_
+            db_name (str): _description_
+            map_size (int, optional): _description_. Defaults to 1024**4.
+        """
+        self.db_path = cache_path / db_name
+        self.map_size = map_size
+        self.env = None
+        self.txn = None
+        self.writable = ???
+        self.default_lmdb_kwargs = {
+            "map_size": map_size,
+            "meminit": False,
+            "map_async": True,
+            "sync": False
+        }
+
+
+        self.open()
+
+    def open(self):
+        if self.env is None:
+            try:
+                self.env = self._open_lmdb()
+            except TimeoutError as exception:
+                raise exception
+    
+    def close(self):
+        if self.env is not None:
+            self.env.close()
+            self.env = None
+            self.txn = None
+
+    def _open_lmdb(self):
+        return lmdb.open(self.db_path, **self.default_lmdb_kwargs)
+
+    def _create_txn(self, writable: bool):
+        if self.env is None:
+            self.open()
+        if self.txn is None:
+            self.txn = self.env.begin(write=writable)
+    
+    def _get_key(self, context: str) -> bytes:
+        return ""
+        # TODO
+
+    def __getstate__(self):
+        state = self.__dict__
+        self.env.close()
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        self.open()
+
+    def exists_feature_cache(self, feature_file: pathlib.Path) -> bool:
+        if self.txn is None:
+            self._create_txn(write=False)
+        key = self._get_key(feature_file)
+        value = self.txn.get(key)
+        return value is not None
+
+    def with_extension(self, feature_file: pathlib.Path) -> str:
+        return ""
+
+    def store_computed_feature_to_folder(self, feature_file: pathlib.Path, feature: AbstractModelFeature) -> bool:
+        if self.env is None:
+            self.open()
+        if self.txn is None:
+            self._create_txn(write=True)
+        key = self._get_key(feature_file)
+        self.txn.put(key, feature.serialize())
+        self.txn.commit()
+        self.txn = self.env.begin(write=True)
+        
+
+    def load_computed_feature_from_folder(self, feature_file: pathlib.Path, feature_type: AbstractModelFeature) -> AbstractModelFeature:
+        if self.env is None:
+            self.open
+        if self.txn is None:
+            self._create_txn(write=True)
+        key = self._get_key(feature_file)
+        try:
+            value = self.txn.get(key)
+        except TimeoutError as exception:
+            raise exception
+        return feature_type.deserialize(value)
