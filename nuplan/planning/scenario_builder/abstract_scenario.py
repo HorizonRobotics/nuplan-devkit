@@ -415,6 +415,16 @@ class AbstractScenario(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def get_past_3d_tracked_objects(
+        self,
+        iteration: int,
+        time_horizon: float,
+        num_samples: Optional[int] = None,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ):
+        pass
+
+    @abc.abstractmethod
     def get_future_tracked_objects(
         self,
         iteration: int,
