@@ -366,6 +366,18 @@ class AbstractScenario(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def get_3d_ego_future_trajectory(
+        self, iteration: int, time_horizon: float, num_samples: Optional[int] = None
+    ):
+        pass
+
+    @abc.abstractmethod
+    def get_3d_ego_past_trajectory(
+        self, iteration: int, time_horizon: float, num_samples: Optional[int] = None
+    ):
+        pass
+
+    @abc.abstractmethod
     def get_past_sensors(
         self,
         iteration: int,

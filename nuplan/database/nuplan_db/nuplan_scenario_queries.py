@@ -601,6 +601,109 @@ def get_sampled_ego_states_from_db(
         )
 
 
+def get_3d_sampled_ego_states_from_db(
+    log_file: str,
+    initial_token: str,
+    sensor_source: SensorDataSource,
+    sample_indexes: Union[Generator[int, None, None], List[int]],
+    future: bool,
+) -> Generator[EgoState, None, None]:
+    """
+    Given an anchor token, retrieve the ego states associated with tokens order by time, sampled by the provided indexes.
+
+    The result is always sorted by timestamp ascending.
+
+    For example, given the following table:
+    token | timestamp | ego_state
+    -----------------------------
+    0     | 0         | A
+    1     | 1         | B
+    2     | 2         | C
+    3     | 3         | D
+    4     | 4         | E
+    5     | 5         | F
+    6     | 6         | G
+    7     | 7         | H
+    8     | 8         | I
+    9     | 9         | J
+    10    | 10        | K
+
+    Some sample results:
+    initial token | sample_indexes | future | returned states
+    ---------------------------------------------------------
+    5             | [0, 1, 2]      | True   | [F, G, H]
+    5             | [0, 1, 2]      | False  | [D, E, F]
+    7             | [0, 3, 12]     | False  | [E, H]
+    0             | [11]           | True   | []
+
+    :param log_file: The db file to query.
+    :param initial_token: The token on which to base the query.
+    :param sample_indexes: The indexes for which to sample.
+    :param future: If true, the indexes represent future times. If false, they represent previous times.
+    :return: A generator of EgoState objects associated with the given LidarPCs.
+    """
+    if not isinstance(sample_indexes, list):
+        sample_indexes = list(sample_indexes)
+
+    sensor_token = get_sensor_token(log_file, sensor_source.sensor_table, sensor_source.channel)
+
+    order_direction = "ASC" if future else "DESC"
+    order_cmp = ">=" if future else "<="
+
+    # TODO: We can remove dependency from lidar_pc if instead of accessing lp.scene_token we do a join on ego_pose
+    query = f"""
+        WITH initial_lidarpc AS
+        (
+            SELECT token, timestamp
+            FROM lidar_pc
+            WHERE token = ?
+        ),
+        ordered AS
+        (
+            SELECT  lp.token,
+                    lp.next_token,
+                    lp.prev_token,
+                    lp.ego_pose_token,
+                    lp.lidar_token,
+                    lp.scene_token,
+                    lp.filename,
+                    lp.timestamp,
+                    ROW_NUMBER() OVER (ORDER BY lp.timestamp {order_direction}) AS row_num
+            FROM lidar_pc AS lp
+            CROSS JOIN initial_lidarpc AS il
+            WHERE   lp.timestamp {order_cmp} il.timestamp
+            AND lidar_token = ?
+        )
+        SELECT  ep.x,
+                ep.y,
+                ep.z,
+                ep.qw,
+                ep.qx,
+                ep.qy,
+                ep.qz,
+                -- ego_pose and lidar_pc timestamps are not the same, even when linked by token!
+                -- use the lidar_pc timestamp for compatibility with older code.
+                o.timestamp,
+                ep.vx,
+                ep.vy,
+                ep.acceleration_x,
+                ep.acceleration_y
+        FROM ego_pose AS ep
+        INNER JOIN ordered AS o
+            ON o.ego_pose_token = ep.token
+
+        -- ROW_NUMBER() starts at 1, where consumers will expect sample_indexes to be 0-indexed
+        WHERE (o.row_num - 1) IN ({('?,'*len(sample_indexes))[:-1]})
+
+        ORDER BY o.timestamp ASC;
+    """
+
+    args = [bytearray.fromhex(initial_token), bytearray.fromhex(sensor_token)] + sample_indexes  # type: ignore
+    for row in execute_many(query, args, log_file):
+        yield [row["x"], row["y"], row["z"], row["qw"], row["qx"], row["qy"], row["qz"], row["timestamp"]]
+
+
+
 def get_ego_state_for_lidarpc_token_from_db(log_file: str, token: str) -> EgoState:
     """
     Get the ego state associated with an individual lidar_pc token from the db.
@@ -675,7 +778,7 @@ def get_3d_ego_transform_for_lidarpc_token_from_db(log_file: str, token: str) ->
     row = execute_one(query, (bytearray.fromhex(token),), log_file)
     if row is None:
         return None
-    return [row["x"], row["y"], row["z"], row["qw"], row["qx"], row["qy"], row["qz"]]
+    return [row["x"], row["y"], row["z"], row["qw"], row["qx"], row["qy"], row["qz"], row["timestamp"]]
 
 
 def get_traffic_light_status_for_lidarpc_token_from_db(
