@@ -24,6 +24,7 @@ from nuplan.database.nuplan_db.nuplan_scenario_queries import (
     get_mission_goal_for_sensor_data_token_from_db,
     get_roadblock_ids_for_lidarpc_token_from_db,
     get_sampled_ego_states_from_db,
+    get_3d_sampled_ego_states_from_db,
     get_sampled_lidarpcs_from_db,
     get_sensor_data_from_sensor_data_tokens_from_db,
     get_sensor_data_token_timestamp_from_db,
@@ -359,6 +360,24 @@ class NuPlanScenario(AbstractScenario):
                 self._log_file, self._lidarpc_tokens[iteration], get_lidarpc_sensor_data(), indices, future=True
             ),
         )
+    
+    def get_3d_ego_past_trajectory(
+        self, iteration: int, time_horizon: float, num_samples: Optional[int] = None
+    ):
+        """Inherited, see superclass."""
+        num_samples = num_samples if num_samples else int(time_horizon / self.database_interval)
+        indices = sample_indices_with_time_horizon(num_samples, time_horizon, self._database_row_interval)
+
+        return [state for state in get_3d_sampled_ego_states_from_db(self._log_file, self._lidarpc_tokens[iteration], get_lidarpc_sensor_data(), indices, future=False)]
+
+    def get_3d_ego_future_trajectory(
+        self, iteration: int, time_horizon: float, num_samples: Optional[int] = None
+    ):
+        """Inherited, see superclass."""
+        num_samples = num_samples if num_samples else int(time_horizon / self.database_interval)
+        indices = sample_indices_with_time_horizon(num_samples, time_horizon, self._database_row_interval)
+
+        return [state for state in get_3d_sampled_ego_states_from_db(self._log_file, self._lidarpc_tokens[iteration], get_lidarpc_sensor_data(), indices, future=True)]
 
     def get_past_tracked_objects(
         self,
