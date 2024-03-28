@@ -441,3 +441,13 @@ class AbstractScenario(abc.ABC):
         :return: the past detections.
         """
         pass
+
+    @abc.abstractmethod
+    def get_future_3d_tracked_objects(
+        self,
+        iteration: int,
+        time_horizon: float,
+        num_samples: Optional[int] = None,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ):
+        pass

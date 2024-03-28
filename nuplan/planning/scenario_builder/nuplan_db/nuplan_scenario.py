@@ -415,6 +415,19 @@ class NuPlanScenario(AbstractScenario):
         for lidar_pc in self._find_matching_lidar_pcs(iteration, num_samples, time_horizon, True):
             yield DetectionsTracks(extract_tracked_objects(lidar_pc.token, self._log_file, future_trajectory_sampling))
 
+    def get_future_3d_tracked_objects(
+        self,
+        iteration: int,
+        time_horizon: float,
+        num_samples: Optional[int] = None,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ) -> Generator[DetectionsTracks, None, None]:
+        """Inherited, see superclass."""
+        # TODO: This can be made even more efficient with a batch query
+        lidar_pcs = self._find_matching_lidar_pcs(iteration, num_samples, time_horizon, True)
+        return [DetectionsTracks(extract_3d_tracked_objects(lpc.token, self._log_file, future_trajectory_sampling)) for lpc in lidar_pcs]
+
+
     def get_past_sensors(
         self,
         iteration: int,
