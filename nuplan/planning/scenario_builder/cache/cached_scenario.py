@@ -24,6 +24,7 @@ class CachedScenario(AbstractScenario):
         scenario_type: str,
         closed_loop_scenario_path: Optional[Path] = None,
         lidarpc_tokens: Optional[List[str]] = None,
+        cache_path: Optional[str] = None,
     ) -> None:
         """
         Construct a cached scenario object.
@@ -39,6 +40,8 @@ class CachedScenario(AbstractScenario):
         self._log_name = log_name
         self._token = token
         self._scenario_type = scenario_type
+        if cache_path is not None:
+            self.cache_path = Path(cache_path)
 
         self._scenario_path = closed_loop_scenario_path
         if self._scenario_path is not None:

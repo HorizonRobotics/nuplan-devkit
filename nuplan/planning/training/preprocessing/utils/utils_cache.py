@@ -45,7 +45,11 @@ def compute_or_load_feature(
                 frame_token = scenario.cache_tokens[iteration]
             else:
                 frame_token = scenario._lidarpc_tokens[iteration]
-            feature_path = cache_path / scenario.log_name / frame_token
+            if hasattr(scenario, 'cache_path'):
+                cache_root = scenario.cache_path
+            else:
+                cache_root = cache_path
+            feature_path = cache_root / scenario.log_name / frame_token
         else:
             if isinstance(scenario, CachedScenario):
                 if hasattr(scenario, "_lidarpc_tokens"):
@@ -107,6 +111,9 @@ def compute_or_load_feature(
         logger.debug(f"Loading feature: {file_name} from a file...")
         try:
             feature = storing_mechanism.load_computed_feature_from_folder(file_name, builder.get_feature_type())
+            # hard code
+            if builder.get_feature_unique_name() == 'bevmap':
+                feature.data = feature.data[:3]
         except Exception:
             if isinstance(builder, AbstractFeatureBuilder):
                 feature = builder.get_features_from_scenario(scenario, iteration)
