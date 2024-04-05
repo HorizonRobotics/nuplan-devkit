@@ -188,14 +188,24 @@ def cache_data(cfg: DictConfig, worker: WorkerPool) -> None:
         logger.info(f"Saving versatile cache pkl to {cfg.cache.versatile_cache_pickle_file}.")
         versatile_cache_pickle_file = Path(cfg.cache.versatile_cache_pickle_file)
         all_failed_scenarios = [token for cache_result in cache_results for token in cache_result.failed_scenarios]
-        scenario_metadata = [
-            {
-                "log_name": scenario.log_name,
-                "token": scenario.token,
-                "scenario_type": scenario.scenario_type,
-                "lidarpc_tokens": scenario._lidarpc_tokens,
-            } for scenario in scenarios if scenario.token not in all_failed_scenarios
-        ]
+        if hasattr(scenarios[0], 'perturbation_idx'):
+            scenario_metadata = [
+                {
+                    "log_name": scenario.log_name,
+                    "token": scenario.token + f'_{scenario.perturbation_idx}',
+                    "scenario_type": scenario.scenario_type,
+                    "lidarpc_tokens": scenario.cache_tokens,
+                } for scenario in scenarios if scenario.token not in all_failed_scenarios
+            ]
+        else:
+            scenario_metadata = [
+                {
+                    "log_name": scenario.log_name,
+                    "token": scenario.token,
+                    "scenario_type": scenario.scenario_type,
+                    "lidarpc_tokens": scenario._lidarpc_tokens,
+                } for scenario in scenarios if scenario.token not in all_failed_scenarios
+            ]
         cache_metadata = cache_results[0].cache_metadata
         all_features = [cache_meta.file_name.stem for cache_meta in cache_metadata]
         all_features = list(set(all_features))
