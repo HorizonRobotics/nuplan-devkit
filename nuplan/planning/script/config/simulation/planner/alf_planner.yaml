@@ -1,0 +1,52 @@
+alf_planner:
+  _target_: nuplan.planning.simulation.planner.ml_planner.alf_planner.AlfPlanner
+  _convert_: all
+
+  root_dir: /mnt/nas25/jingyu.qian/hybrid_dir/exp23_pure_imitation_v2/
+  additional_conf_params: 
+    - "LogSimEnvironment.result_file='/mnt/nas25/jingyu.qian/hybrid_dir/exp23_pure_imitation_v2/abaaba.csv'"
+    - 'create_environment.env_name="/mnt/nas25/nuplan_cached/prepared_scenario/trainval_v5_full/metadata/trainval_v5_full_metadata_node_0.csv"'
+    - 'LogSimEnvironment.preload_scenarios=False'
+    - 'ProgressReward.sparse=False'
+    - 'LogSimEnvironment.max_num_result_episodes_per_env=1'
+    - "eval_split='val'"
+    - 'logsim_environment.load.randomize_starting_step=False'
+    - 'TrainerConfig.epsilon_greedy=0.0'
+    - 'create_environment.batch_size_per_env=1'
+    - 'create_environment.eval_batch_size_per_env=1'
+    - 'create_environment.num_parallel_environments=1'
+  future_trajectory_sampling:
+    _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
+    _convert_: 'all'
+    num_poses: 16
+    time_horizon: 8.0  
+  feature_builders: 
+    - _target_: nuplan_extent.planning.training.preprocessing.feature_builders.horizon_raster_feature_builder_v2.HorizonRasterFeatureBuilderV2
+      _convert_: all
+      raster_names: 
+        - 'ego'
+        - 'past_current_agents'
+        - 'roadmap'
+        - 'baseline_paths'
+        - 'route'
+        - 'ego_speed'
+        - 'drivable_area'
+        - 'speed_limit'
+      map_features:
+        LANE: 1.0
+        INTERSECTION: 1.0
+        STOP_LINE: 0.5
+        CROSSWALK: 0.5
+      target_width: 224
+      target_height: 224
+      target_pixel_size: 0.5
+      ego_width: 2.297
+      ego_front_length: 4.049
+      ego_rear_length: 1.127
+      ego_longitudinal_offset: 0.0
+      baseline_path_thickness: 1
+      past_time_horizon: 2.0
+      past_num_poses: 4
+
+    - _target_: nuplan_extent.planning.training.preprocessing.feature_builders.ego_state_feature_builder_v2.EgoStateFeatureBuilderV2
+      _convert_: all
