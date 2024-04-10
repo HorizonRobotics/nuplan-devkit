@@ -35,7 +35,8 @@ class SimulationLog:
         Dump file into compressed msgpack.
         """
         # Serialize to a pickle object
-        pickle_object = pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL)
+        obj = SimulationLog(file_path=self.file_path, scenario=self.scenario, planner=None, simulation_history=self.simulation_history)
+        pickle_object = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
         msg_packed_bytes = msgpack.packb(pickle_object)
         save_buffer(self.file_path, lzma.compress(msg_packed_bytes, preset=0))
 
