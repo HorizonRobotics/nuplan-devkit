@@ -28,6 +28,7 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
         scenarios: List[AbstractScenario],
         feature_preprocessor: FeaturePreprocessor,
         augmentors: Optional[List[AbstractAugmentor]] = None,
+        start_iteration: int = 0,
         **kwargs,
     ) -> None:
         """Scenario dataset for closed-loop training, version 2"""
@@ -54,27 +55,35 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
                 f"divisible by world_size x batch_size. Will drop the last {scenarios_to_drop} scenarios."
             )
             scenarios = scenarios[:-scenarios_to_drop]
+            # scenarios_to_add = (
+            #     (len(scenarios) // effective_batch + 1) * effective_batch - len(scenarios)
+            # )
+            # logger.warning(
+            #     f"Number of scenarios {len(scenarios)} is not "
+            #     f"divisible by world_size x batch_size. Will add the first {scenarios_to_add} scenarios."
+            # )
+            # scenarios = scenarios + scenarios[:scenarios_to_add]
         self._idx2token = {}
         self._token2scenario = {i.token: i for i in scenarios}
         self._scenario_max_len = min(
             [i.get_number_of_iterations() for i in scenarios]
         )
-        if getattr(scenarios[0], 'trim_scenario_end', False):
-            self._scenario_max_len -= scenarios[0].total_steps
-        self._length = self._scenario_max_len * len(scenarios)
+        self._scenario_final_len = self._scenario_max_len - start_iteration
+        self._length = self._scenario_final_len * len(scenarios)
         self._batch_size = batch_size
 
         logger.info("Indexing scenarios...")
         token_sequence = [i.token for i in scenarios]
         random.shuffle(token_sequence)
-        for time in range(self._scenario_max_len):
+        for time in range(self._scenario_final_len):
             for i, sid in enumerate(token_sequence):
                 scenario = self._token2scenario[sid]
                 idx = time * len(scenarios) + i
-                self._idx2token[idx] = "_".join([scenario.token, str(time)])
+                self._idx2token[idx] = "_".join([scenario.token, str(time + start_iteration)])
         logger.info("Indexing scenarios...DONE!")
         logger.info(f"Scenario count: {len(scenarios)}")
         logger.info(f"Scenario length: {self._scenario_max_len}"),
+        logger.info(f"Start from iteration {start_iteration}, scenario final length: {self._scenario_final_len}")
         logger.info(f"Dataset size: {self._length}")
         logger.info(f"Batch size: {self._batch_size}")
         logger.info(
