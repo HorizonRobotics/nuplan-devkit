@@ -17,8 +17,9 @@ def build_aggregated_metrics(cfg: DictConfig) -> List[Metric]:
     :return list of metrics.
     """
     instantiated_metrics = []
-    for metric_name, cfg_metric in cfg.aggregated_metric.items():
-        new_metric: Metric = instantiate(cfg_metric)
-        validate_type(new_metric, Metric)
-        instantiated_metrics.append(new_metric)
+    if 'aggregated_metric' in cfg:
+        for metric_name, cfg_metric in cfg.aggregated_metric.items():
+            new_metric: Metric = instantiate(cfg_metric)
+            validate_type(new_metric, Metric)
+            instantiated_metrics.append(new_metric)
     return instantiated_metrics
