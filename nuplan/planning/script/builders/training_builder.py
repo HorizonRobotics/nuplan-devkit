@@ -88,7 +88,7 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     metrics = build_training_metrics(cfg)
     
     # Build aggregated metrics to evaluate the performance of predictions
-    aggregated_metrics = build_aggregated_metrics(cfg)
+    aggregated_metrics = build_aggregated_metrics(cfg) if "aggregated_metric" in cfg else {}
 
     # Create the complete Module
     if 'checkpoint' in cfg and cfg.checkpoint.ckpt_path is not None:

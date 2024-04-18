@@ -6,7 +6,7 @@ from nuplan.planning.utils.multithreading.worker_pool import WorkerPool
 
 
 def _filter_abstract_scenario_by_log_name(
-    scenarios: List[AbstractScenario], log_names: Set[str], worker: WorkerPool
+    scenarios: List[AbstractScenario], log_names: Set[str], worker: WorkerPool, split: str
 ) -> List[AbstractScenario]:
     """
     Extracts all scenarios matching the input log names.
@@ -16,7 +16,7 @@ def _filter_abstract_scenario_by_log_name(
     :param worker: workerpool for multiprocessing
     :return: matched AbstractScenario
     """
-    return [scenario for scenario in scenarios if scenario.log_name in log_names]
+    return [scenario for scenario in scenarios if getattr(scenario, 'split', None) == split or scenario.log_name in log_names]
 
 
 class LogSplitter(AbstractSplitter):
@@ -36,12 +36,12 @@ class LogSplitter(AbstractSplitter):
 
     def get_train_samples(self, scenarios: List[AbstractScenario], worker: WorkerPool) -> List[AbstractScenario]:
         """Inherited, see superclass."""
-        return _filter_abstract_scenario_by_log_name(scenarios, self.train_logs, worker)
+        return _filter_abstract_scenario_by_log_name(scenarios, self.train_logs, worker, 'train')
 
     def get_val_samples(self, scenarios: List[AbstractScenario], worker: WorkerPool) -> List[AbstractScenario]:
         """Inherited, see superclass."""
-        return _filter_abstract_scenario_by_log_name(scenarios, self.val_logs, worker)
+        return _filter_abstract_scenario_by_log_name(scenarios, self.val_logs, worker, 'val')
 
     def get_test_samples(self, scenarios: List[AbstractScenario], worker: WorkerPool) -> List[AbstractScenario]:
         """Inherited, see superclass."""
-        return _filter_abstract_scenario_by_log_name(scenarios, self.test_logs, worker)
+        return _filter_abstract_scenario_by_log_name(scenarios, self.test_logs, worker, 'test')

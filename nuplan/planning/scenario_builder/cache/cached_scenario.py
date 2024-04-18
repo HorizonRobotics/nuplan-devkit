@@ -15,7 +15,6 @@ class CachedScenario(AbstractScenario):
     A class representing a cached scenario.
     This class is backend-agnostic, and serves as a pointer to precomputed features.
     """
-
     def __init__(
         self,
         log_name: str,
@@ -23,6 +22,8 @@ class CachedScenario(AbstractScenario):
         scenario_type: str,
         closed_loop_scenario_path: Optional[Path] = None,
         lidarpc_tokens: Optional[List[str]] = None,
+        cache_path: Optional[str] = None,
+        split: Optional[str] = None,
     ) -> None:
         """
         Construct a cached scenario object.
@@ -38,6 +39,9 @@ class CachedScenario(AbstractScenario):
         self._log_name = log_name
         self._token = token
         self._scenario_type = scenario_type
+        self.split = split
+        if cache_path is not None:
+            self.cache_path = Path(cache_path)
 
         self._scenario_path = closed_loop_scenario_path
         if self._scenario_path is not None:
@@ -95,7 +99,15 @@ class CachedScenario(AbstractScenario):
 
     def get_number_of_iterations(self) -> int:
         """Inherited, see superclass."""
+<<<<<<< HEAD
         return self._scenario_len
+=======
+        # hard code
+        if self._scenario_type == 'Nuscenes_common':
+            return self._scenario_len - 8
+        else:
+            return self._scenario_len
+>>>>>>> b89ec0254f5bf8c24f3204dd6eac319052ba05b6
 
     def get_time_point(self) -> TimePoint:
         """Inherited, see superclass."""
