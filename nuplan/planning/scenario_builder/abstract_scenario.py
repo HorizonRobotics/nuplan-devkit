@@ -167,6 +167,20 @@ class AbstractScenario(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def get_3d_tracked_objects_at_iteration(
+        self,
+        iteration: int,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ) -> DetectionsTracks:
+        """
+        Return tracked objects from iteration
+        :param iteration: within scenario 0 <= iteration < number_of_iterations
+        :param future_trajectory_sampling: sampling parameters of agent future ground truth predictions if desired.
+        :return: DetectionsTracks.
+        """
+        pass
+
+    @abc.abstractmethod
     def get_tracked_objects_within_time_window_at_iteration(
         self,
         iteration: int,
@@ -217,6 +231,15 @@ class AbstractScenario(abc.ABC):
 
     @abc.abstractmethod
     def get_ego_state_at_iteration(self, iteration: int) -> EgoState:
+        """
+        Return ego (expert) state in a dataset
+        :param iteration: within scenario 0 <= iteration < number_of_iterations
+        :return: EgoState of ego.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_3d_ego_transform_at_iteration(self, iteration: int) -> List[float]:
         """
         Return ego (expert) state in a dataset
         :param iteration: within scenario 0 <= iteration < number_of_iterations
@@ -343,6 +366,18 @@ class AbstractScenario(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def get_3d_ego_future_trajectory(
+        self, iteration: int, time_horizon: float, num_samples: Optional[int] = None
+    ):
+        pass
+
+    @abc.abstractmethod
+    def get_3d_ego_past_trajectory(
+        self, iteration: int, time_horizon: float, num_samples: Optional[int] = None
+    ):
+        pass
+
+    @abc.abstractmethod
     def get_past_sensors(
         self,
         iteration: int,
@@ -380,6 +415,16 @@ class AbstractScenario(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def get_past_3d_tracked_objects(
+        self,
+        iteration: int,
+        time_horizon: float,
+        num_samples: Optional[int] = None,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ):
+        pass
+
+    @abc.abstractmethod
     def get_future_tracked_objects(
         self,
         iteration: int,
@@ -395,4 +440,14 @@ class AbstractScenario(abc.ABC):
         :param future_trajectory_sampling: sampling parameters of agent future ground truth predictions if desired.
         :return: the past detections.
         """
+        pass
+
+    @abc.abstractmethod
+    def get_future_3d_tracked_objects(
+        self,
+        iteration: int,
+        time_horizon: float,
+        num_samples: Optional[int] = None,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ):
         pass

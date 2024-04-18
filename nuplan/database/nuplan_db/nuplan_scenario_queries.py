@@ -10,6 +10,7 @@ from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.oriented_box import OrientedBox
 from nuplan.common.actor_state.scene_object import SceneObjectMetadata
 from nuplan.common.actor_state.state_representation import StateSE2, StateVector2D, TimePoint
+from nuplan.common.actor_state.state_representation_3d import StateSE3, StateVector3D
 from nuplan.common.actor_state.static_object import StaticObject
 from nuplan.common.actor_state.tracked_objects import TrackedObject
 from nuplan.common.actor_state.tracked_objects_types import AGENT_TYPES, TrackedObjectType
@@ -34,6 +35,50 @@ def _parse_tracked_object_row(row: sqlite3.Row) -> TrackedObject:
     """
     category_name = row["category_name"]
     pose = StateSE2(row["x"], row["y"], row["yaw"])
+    oriented_box = OrientedBox(pose, width=row["width"], length=row["length"], height=row["height"])
+
+    # These next two are globals
+    label_local = raw_mapping["global2local"][category_name]
+    tracked_object_type = TrackedObjectType[local2agent_type[label_local]]
+
+    if tracked_object_type in AGENT_TYPES:
+        return Agent(
+            tracked_object_type=tracked_object_type,
+            oriented_box=oriented_box,
+            velocity=StateVector2D(row["vx"], row["vy"]),
+            predictions=[],  # to be filled in later
+            angular_velocity=np.nan,
+            metadata=SceneObjectMetadata(
+                token=row["token"].hex(),
+                track_token=row["track_token"].hex(),
+                track_id=get_unique_incremental_track_id(str(row["track_token"].hex())),
+                timestamp_us=row["timestamp"],
+                category_name=category_name,
+            ),
+        )
+    else:
+        return StaticObject(
+            tracked_object_type=tracked_object_type,
+            oriented_box=oriented_box,
+            metadata=SceneObjectMetadata(
+                token=row["token"].hex(),
+                track_token=row["track_token"].hex(),
+                track_id=get_unique_incremental_track_id(str(row["track_token"].hex())),
+                timestamp_us=row["timestamp"],
+                category_name=category_name,
+            ),
+        )
+    
+
+def _parse_3d_tracked_object_row(row: sqlite3.Row) -> TrackedObject:
+    """
+    A convenience method to parse a TrackedObject from a sqlite3 row.
+    :param row: The row from the DB query.
+    :return: The parsed TrackedObject.
+    """
+    category_name = row["category_name"]
+    pose = StateSE3(row["x"], row["y"], row["z"], row["yaw"])
+    # pose = StateSE2(row["x"], row["y"], row["yaw"], row["z"])
     oriented_box = OrientedBox(pose, width=row["width"], length=row["length"], height=row["height"])
 
     # These next two are globals
@@ -556,6 +601,109 @@ def get_sampled_ego_states_from_db(
         )
 
 
+def get_3d_sampled_ego_states_from_db(
+    log_file: str,
+    initial_token: str,
+    sensor_source: SensorDataSource,
+    sample_indexes: Union[Generator[int, None, None], List[int]],
+    future: bool,
+) -> Generator[EgoState, None, None]:
+    """
+    Given an anchor token, retrieve the ego states associated with tokens order by time, sampled by the provided indexes.
+
+    The result is always sorted by timestamp ascending.
+
+    For example, given the following table:
+    token | timestamp | ego_state
+    -----------------------------
+    0     | 0         | A
+    1     | 1         | B
+    2     | 2         | C
+    3     | 3         | D
+    4     | 4         | E
+    5     | 5         | F
+    6     | 6         | G
+    7     | 7         | H
+    8     | 8         | I
+    9     | 9         | J
+    10    | 10        | K
+
+    Some sample results:
+    initial token | sample_indexes | future | returned states
+    ---------------------------------------------------------
+    5             | [0, 1, 2]      | True   | [F, G, H]
+    5             | [0, 1, 2]      | False  | [D, E, F]
+    7             | [0, 3, 12]     | False  | [E, H]
+    0             | [11]           | True   | []
+
+    :param log_file: The db file to query.
+    :param initial_token: The token on which to base the query.
+    :param sample_indexes: The indexes for which to sample.
+    :param future: If true, the indexes represent future times. If false, they represent previous times.
+    :return: A generator of EgoState objects associated with the given LidarPCs.
+    """
+    if not isinstance(sample_indexes, list):
+        sample_indexes = list(sample_indexes)
+
+    sensor_token = get_sensor_token(log_file, sensor_source.sensor_table, sensor_source.channel)
+
+    order_direction = "ASC" if future else "DESC"
+    order_cmp = ">=" if future else "<="
+
+    # TODO: We can remove dependency from lidar_pc if instead of accessing lp.scene_token we do a join on ego_pose
+    query = f"""
+        WITH initial_lidarpc AS
+        (
+            SELECT token, timestamp
+            FROM lidar_pc
+            WHERE token = ?
+        ),
+        ordered AS
+        (
+            SELECT  lp.token,
+                    lp.next_token,
+                    lp.prev_token,
+                    lp.ego_pose_token,
+                    lp.lidar_token,
+                    lp.scene_token,
+                    lp.filename,
+                    lp.timestamp,
+                    ROW_NUMBER() OVER (ORDER BY lp.timestamp {order_direction}) AS row_num
+            FROM lidar_pc AS lp
+            CROSS JOIN initial_lidarpc AS il
+            WHERE   lp.timestamp {order_cmp} il.timestamp
+            AND lidar_token = ?
+        )
+        SELECT  ep.x,
+                ep.y,
+                ep.z,
+                ep.qw,
+                ep.qx,
+                ep.qy,
+                ep.qz,
+                -- ego_pose and lidar_pc timestamps are not the same, even when linked by token!
+                -- use the lidar_pc timestamp for compatibility with older code.
+                o.timestamp,
+                ep.vx,
+                ep.vy,
+                ep.acceleration_x,
+                ep.acceleration_y
+        FROM ego_pose AS ep
+        INNER JOIN ordered AS o
+            ON o.ego_pose_token = ep.token
+
+        -- ROW_NUMBER() starts at 1, where consumers will expect sample_indexes to be 0-indexed
+        WHERE (o.row_num - 1) IN ({('?,'*len(sample_indexes))[:-1]})
+
+        ORDER BY o.timestamp ASC;
+    """
+
+    args = [bytearray.fromhex(initial_token), bytearray.fromhex(sensor_token)] + sample_indexes  # type: ignore
+    for row in execute_many(query, args, log_file):
+        yield [row["x"], row["y"], row["z"], row["qw"], row["qx"], row["qy"], row["qz"], row["timestamp"]]
+
+
+
 def get_ego_state_for_lidarpc_token_from_db(log_file: str, token: str) -> EgoState:
     """
     Get the ego state associated with an individual lidar_pc token from the db.
@@ -597,6 +745,40 @@ def get_ego_state_for_lidarpc_token_from_db(log_file: str, token: str) -> EgoSta
         rear_axle_velocity_2d=StateVector2D(row["vx"], y=row["vy"]),
         rear_axle_acceleration_2d=StateVector2D(x=row["acceleration_x"], y=row["acceleration_y"]),
     )
+
+def get_3d_ego_transform_for_lidarpc_token_from_db(log_file: str, token: str) -> List[float]:
+    """
+    Get the ego state associated with an individual lidar_pc token from the db.
+
+    :param log_file: The log file to query.
+    :param token: The lidar_pc token to query.
+    :return: The EgoState associated with the LidarPC.
+    """
+    query = """
+        SELECT  ep.x,
+                ep.y,
+                ep.z,
+                ep.qw,
+                ep.qx,
+                ep.qy,
+                ep.qz,
+                -- ego_pose and lidar_pc timestamps are not the same, even when linked by token!
+                -- use lidar_pc timestamp for backwards compatibility.
+                lp.timestamp,
+                ep.vx,
+                ep.vy,
+                ep.acceleration_x,
+                ep.acceleration_y
+        FROM ego_pose AS ep
+        INNER JOIN lidar_pc AS lp
+            ON lp.ego_pose_token = ep.token
+        WHERE lp.token = ?
+    """
+
+    row = execute_one(query, (bytearray.fromhex(token),), log_file)
+    if row is None:
+        return None
+    return [row["x"], row["y"], row["z"], row["qw"], row["qx"], row["qy"], row["qz"], row["timestamp"]]
 
 
 def get_traffic_light_status_for_lidarpc_token_from_db(
@@ -728,6 +910,48 @@ def get_tracked_objects_for_lidarpc_token_from_db(log_file: str, token: str) -> 
 
     for row in execute_many(query, (bytearray.fromhex(token),), log_file):
         yield _parse_tracked_object_row(row)
+
+
+def get_3d_tracked_objects_for_lidarpc_token_from_db(log_file: str, token: str) -> Generator[TrackedObject, None, None]:
+    """
+    Get all tracked objects for a given lidar_pc.
+    This includes both agents and static objects.
+    The values are returned in random order.
+
+    For agents, this query will not obtain the future waypoints.
+    For that, call `get_future_waypoints_for_agents_from_db()`
+        with the tokens of the agents of interest.
+
+    :param log_file: The log file to query.
+    :param token: The lidar_pc token for which to obtain the objects.
+    :return: The tracked objects associated with the token.
+    """
+    query = """
+        SELECT  c.name AS category_name,
+                lb.x,
+                lb.y,
+                lb.z,
+                lb.yaw,
+                lb.width,
+                lb.length,
+                lb.height,
+                lb.vx,
+                lb.vy,
+                lb.token,
+                lb.track_token,
+                lp.timestamp
+        FROM lidar_box AS lb
+        INNER JOIN track AS t
+            ON t.token = lb.track_token
+        INNER JOIN category AS c
+            ON c.token = t.category_token
+        INNER JOIN lidar_pc AS lp
+            ON lp.token = lb.lidar_pc_token
+        WHERE lp.token = ?
+    """
+
+    for row in execute_many(query, (bytearray.fromhex(token),), log_file):
+        yield _parse_3d_tracked_object_row(row)
 
 
 def get_future_waypoints_for_agents_from_db(

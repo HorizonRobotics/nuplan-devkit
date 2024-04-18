@@ -18,11 +18,13 @@ from nuplan.database.nuplan_db.lidar_pc import LidarPc
 from nuplan.database.nuplan_db.nuplan_db_utils import get_lidarpc_sensor_data
 from nuplan.database.nuplan_db.nuplan_scenario_queries import (
     get_ego_state_for_lidarpc_token_from_db,
+    get_3d_ego_transform_for_lidarpc_token_from_db,
     get_end_sensor_time_from_db,
     get_images_from_lidar_tokens,
     get_mission_goal_for_sensor_data_token_from_db,
     get_roadblock_ids_for_lidarpc_token_from_db,
     get_sampled_ego_states_from_db,
+    get_3d_sampled_ego_states_from_db,
     get_sampled_lidarpcs_from_db,
     get_sensor_data_from_sensor_data_tokens_from_db,
     get_sensor_data_token_timestamp_from_db,
@@ -37,6 +39,7 @@ from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_utils import (
     download_file_if_necessary,
     extract_sensor_tokens_as_scenario,
     extract_tracked_objects,
+    extract_3d_tracked_objects,
     extract_tracked_objects_within_time_window,
     load_image,
     load_point_cloud,
@@ -256,6 +259,10 @@ class NuPlanScenario(AbstractScenario):
     def get_ego_state_at_iteration(self, iteration: int) -> EgoState:
         """Inherited, see superclass."""
         return get_ego_state_for_lidarpc_token_from_db(self._log_file, self._lidarpc_tokens[iteration])
+    
+    def get_3d_ego_transform_at_iteration(self, iteration: int) -> List[float]:
+        """Inherited, see superclass."""
+        return get_3d_ego_transform_for_lidarpc_token_from_db(self._log_file, self._lidarpc_tokens[iteration])
 
     def get_tracked_objects_at_iteration(
         self,
@@ -266,6 +273,17 @@ class NuPlanScenario(AbstractScenario):
         assert 0 <= iteration < self.get_number_of_iterations(), f"Iteration is out of scenario: {iteration}!"
         return DetectionsTracks(
             extract_tracked_objects(self._lidarpc_tokens[iteration], self._log_file, future_trajectory_sampling)
+        )
+    
+    def get_3d_tracked_objects_at_iteration(
+        self,
+        iteration: int,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ) -> DetectionsTracks:
+        """Inherited, see superclass."""
+        assert 0 <= iteration < self.get_number_of_iterations(), f"Iteration is out of scenario: {iteration}!"
+        return DetectionsTracks(
+            extract_3d_tracked_objects(self._lidarpc_tokens[iteration], self._log_file, future_trajectory_sampling)
         )
 
     def get_tracked_objects_within_time_window_at_iteration(
@@ -342,6 +360,24 @@ class NuPlanScenario(AbstractScenario):
                 self._log_file, self._lidarpc_tokens[iteration], get_lidarpc_sensor_data(), indices, future=True
             ),
         )
+    
+    def get_3d_ego_past_trajectory(
+        self, iteration: int, time_horizon: float, num_samples: Optional[int] = None
+    ):
+        """Inherited, see superclass."""
+        num_samples = num_samples if num_samples else int(time_horizon / self.database_interval)
+        indices = sample_indices_with_time_horizon(num_samples, time_horizon, self._database_row_interval)
+
+        return [state for state in get_3d_sampled_ego_states_from_db(self._log_file, self._lidarpc_tokens[iteration], get_lidarpc_sensor_data(), indices, future=False)]
+
+    def get_3d_ego_future_trajectory(
+        self, iteration: int, time_horizon: float, num_samples: Optional[int] = None
+    ):
+        """Inherited, see superclass."""
+        num_samples = num_samples if num_samples else int(time_horizon / self.database_interval)
+        indices = sample_indices_with_time_horizon(num_samples, time_horizon, self._database_row_interval)
+
+        return [state for state in get_3d_sampled_ego_states_from_db(self._log_file, self._lidarpc_tokens[iteration], get_lidarpc_sensor_data(), indices, future=True)]
 
     def get_past_tracked_objects(
         self,
@@ -355,6 +391,18 @@ class NuPlanScenario(AbstractScenario):
         for lidar_pc in self._find_matching_lidar_pcs(iteration, num_samples, time_horizon, False):
             yield DetectionsTracks(extract_tracked_objects(lidar_pc.token, self._log_file, future_trajectory_sampling))
 
+    def get_past_3d_tracked_objects(
+        self,
+        iteration: int,
+        time_horizon: float,
+        num_samples: Optional[int] = None,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ) -> Generator[DetectionsTracks, None, None]:
+        """Inherited, see superclass."""
+        # TODO: This can be made even more efficient with a batch query
+        lidar_pcs = self._find_matching_lidar_pcs(iteration, num_samples, time_horizon, False)
+        return [DetectionsTracks(extract_3d_tracked_objects(lpc.token, self._log_file, future_trajectory_sampling)) for lpc in lidar_pcs]
+
     def get_future_tracked_objects(
         self,
         iteration: int,
@@ -366,6 +414,19 @@ class NuPlanScenario(AbstractScenario):
         # TODO: This can be made even more efficient with a batch query
         for lidar_pc in self._find_matching_lidar_pcs(iteration, num_samples, time_horizon, True):
             yield DetectionsTracks(extract_tracked_objects(lidar_pc.token, self._log_file, future_trajectory_sampling))
+
+    def get_future_3d_tracked_objects(
+        self,
+        iteration: int,
+        time_horizon: float,
+        num_samples: Optional[int] = None,
+        future_trajectory_sampling: Optional[TrajectorySampling] = None,
+    ) -> Generator[DetectionsTracks, None, None]:
+        """Inherited, see superclass."""
+        # TODO: This can be made even more efficient with a batch query
+        lidar_pcs = self._find_matching_lidar_pcs(iteration, num_samples, time_horizon, True)
+        return [DetectionsTracks(extract_3d_tracked_objects(lpc.token, self._log_file, future_trajectory_sampling)) for lpc in lidar_pcs]
+
 
     def get_past_sensors(
         self,
