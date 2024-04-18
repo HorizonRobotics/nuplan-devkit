@@ -421,7 +421,7 @@ class StateSE2(Point2D):
         if se3:
             assert matrix.shape == (4, 4), f"Expected 4x4 transformation matrix, but input matrix has shape {matrix.shape}"
             
-            vector = [matrix[0, 2], matrix[1, 2], matrix[2, 2], np.arctan2(matrix[1, 0], matrix[0, 0])]
+            vector = [matrix[0, 3], matrix[1, 3], matrix[2, 3], np.arctan2(matrix[1, 0], matrix[0, 0])]
             return StateSE2.deserialize(vector, se3=True)
         assert matrix.shape == (3, 3), f"Expected 3x3 transformation matrix, but input matrix has shape {matrix.shape}"
 

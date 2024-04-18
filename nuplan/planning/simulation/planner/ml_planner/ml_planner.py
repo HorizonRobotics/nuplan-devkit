@@ -63,7 +63,7 @@ class MLPlanner(AbstractPlanner):
         trajectory = np.column_stack(
             (
                 trajectory[:, 1],
-                trajectory[:, 0],
+                -trajectory[:, 0],
                 trajectory[:, 2]
             )
         )
