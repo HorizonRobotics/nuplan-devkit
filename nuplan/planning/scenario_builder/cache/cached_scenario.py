@@ -99,15 +99,11 @@ class CachedScenario(AbstractScenario):
 
     def get_number_of_iterations(self) -> int:
         """Inherited, see superclass."""
-<<<<<<< HEAD
-        return self._scenario_len
-=======
         # hard code
         if self._scenario_type == 'Nuscenes_common':
             return self._scenario_len - 8
         else:
             return self._scenario_len
->>>>>>> b89ec0254f5bf8c24f3204dd6eac319052ba05b6
 
     def get_time_point(self) -> TimePoint:
         """Inherited, see superclass."""
