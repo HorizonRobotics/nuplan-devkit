@@ -6,7 +6,6 @@ import pytorch_lightning as pl
 import pytorch_lightning.loggers
 import pytorch_lightning.plugins
 import torch
-from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 # from ray_lightning import RayStrategy
 from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
@@ -18,6 +17,7 @@ from nuplan.planning.script.builders.scenario_builder import build_scenarios
 from nuplan.planning.script.builders.splitter_builder import build_splitter
 from nuplan.planning.script.builders.training_callback_builder import build_callbacks
 from nuplan.planning.script.builders.training_metrics_builder import build_training_metrics
+from nuplan.planning.script.builders.aggregated_metrics_builder import build_aggregated_metrics
 from nuplan.planning.script.builders.utils.utils_checkpoint import extract_last_checkpoint_from_experiment
 from nuplan.planning.training.data_loader.datamodule import DataModule
 from nuplan.planning.training.modeling.lightning_module_wrapper_closeloop import LightningModuleWrapperCloseloop
@@ -56,6 +56,7 @@ def build_lightning_datamodule(
 
     # Create data augmentation
     augmentors = build_agent_augmentor(cfg.data_augmentation) if 'data_augmentation' in cfg else None
+    val_augmentors = build_agent_augmentor(cfg.val_data_augmentation) if 'val_data_augmentation' in cfg else None
 
     # Build dataset scenarios
     scenarios = build_scenarios(cfg, worker, model)
@@ -67,6 +68,7 @@ def build_lightning_datamodule(
         all_scenarios=scenarios,
         dataloader_params=cfg.data_loader.params,
         augmentors=augmentors,
+        val_augmentors=val_augmentors,
         worker=worker,
         scenario_type_sampling_weights=cfg.scenario_type_weights.scenario_type_sampling_weights,
         **cfg.data_loader.datamodule,
@@ -87,6 +89,9 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
 
     # Build metrics to evaluate the performance of predictions
     metrics = build_training_metrics(cfg)
+    
+    # Build aggregated metrics to evaluate the performance of predictions
+    aggregated_metrics = build_aggregated_metrics(cfg) if "aggregated_metric" in cfg else {}
 
     # Create the complete Module
     model = LightningModuleWrapperCloseloop(
@@ -162,7 +167,35 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
         params.check_val_every_n_epoch = params.max_epochs + 1
         OmegaConf.set_struct(cfg, True)
 
+<<<<<<< HEAD
         return pl.Trainer(**params)
+=======
+        return pl.Trainer(plugins=plugins, **params)
+
+    if cfg.lightning.trainer.checkpoint.resume_training:
+        OmegaConf.set_struct(cfg, False)
+        if isinstance(cfg.lightning.trainer.checkpoint.resume_training, bool):
+            # Resume training from latest checkpoint
+            output_dir = Path(cfg.output_dir)
+            date_format = cfg.date_format
+
+            last_checkpoint = extract_last_checkpoint_from_experiment(output_dir, date_format)
+            if not last_checkpoint:
+                raise ValueError('Resume Training is enabled but no checkpoint was found!')
+
+            params.resume_from_checkpoint = str(last_checkpoint)
+            latest_epoch = torch.load(last_checkpoint)['epoch']
+            params.max_epochs += latest_epoch
+            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
+
+        else:
+            # Resume training from designated checkpoint
+            params.resume_from_checkpoint = str(cfg.lightning.trainer.checkpoint.resume_training)
+            latest_epoch = torch.load(params.resume_from_checkpoint)['epoch']
+            params.max_epochs += latest_epoch
+            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {params.resume_from_checkpoint}')
+        OmegaConf.set_struct(cfg, True)
+>>>>>>> feat-v1.2_wenxin
 
     trainer = pl.Trainer(
         callbacks=callbacks,

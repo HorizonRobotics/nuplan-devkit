@@ -188,20 +188,35 @@ def cache_data(cfg: DictConfig, worker: WorkerPool) -> None:
         logger.info(f"Saving versatile cache pkl to {cfg.cache.versatile_cache_pickle_file}.")
         versatile_cache_pickle_file = Path(cfg.cache.versatile_cache_pickle_file)
         all_failed_scenarios = [token for cache_result in cache_results for token in cache_result.failed_scenarios]
-        scenario_metadata = [
-            {
-                "log_name": scenario.log_name,
-                "token": scenario.token,
-                "scenario_type": scenario.scenario_type,
-                "lidarpc_tokens": scenario._lidarpc_tokens,
-            } for scenario in scenarios if scenario.token not in all_failed_scenarios
-        ]
+        if hasattr(scenarios[0], 'perturbation_idx'):
+            scenario_metadata = [
+                {
+                    "log_name": scenario.log_name,
+                    "token": scenario.token + f'_{scenario.perturbation_idx}',
+                    "scenario_type": scenario.scenario_type,
+                    "lidarpc_tokens": scenario.cache_tokens,
+                    "split": 'train',
+                } for scenario in scenarios if scenario.token not in all_failed_scenarios
+            ]
+        else:
+            scenario_metadata = [
+                {
+                    "log_name": scenario.log_name,
+                    "token": scenario.token,
+                    "scenario_type": scenario.scenario_type,
+                    "lidarpc_tokens": scenario._lidarpc_tokens,
+                } for scenario in scenarios if scenario.token not in all_failed_scenarios
+            ]
         cache_metadata = cache_results[0].cache_metadata
         all_features = [cache_meta.file_name.stem for cache_meta in cache_metadata]
         all_features = list(set(all_features))
         scenario_metadata.append(all_features)
         with open(versatile_cache_pickle_file, 'wb') as f:
             pickle.dump(scenario_metadata, f)
+        if len(all_failed_scenarios) > 0:
+            failed_scenarios_file = versatile_cache_pickle_file.parent / f'{versatile_cache_pickle_file.stem}_cachingfailed.pkl'
+            with open(failed_scenarios_file, 'wb') as f:
+                pickle.dump(all_failed_scenarios, f)
     else:
         cached_metadata = [
             cache_metadata_entry

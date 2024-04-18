@@ -59,8 +59,10 @@ class ScenarioFilter:
     # Used to filter out scenarios with no route
     ego_route_radius: Optional[float] = None
 
-    # e2e
+    # e2e related
+    # Whether to check if all tokens in a scenario has all valid camera data
     camera_valid_check: bool = False
+    # A config that controls whether/how to create neighbor scenarios, refer to closed_loop_training_scenarios.yaml
     neighbor_scenarios: Optional[Dict] = None
 
     def __post_init__(self) -> None:

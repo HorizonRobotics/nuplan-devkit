@@ -15,7 +15,6 @@ class CachedScenario(AbstractScenario):
     A class representing a cached scenario.
     This class is backend-agnostic, and serves as a pointer to precomputed features.
     """
-
     def __init__(
         self,
         log_name: str,
@@ -23,19 +22,26 @@ class CachedScenario(AbstractScenario):
         scenario_type: str,
         closed_loop_scenario_path: Optional[Path] = None,
         lidarpc_tokens: Optional[List[str]] = None,
-        split = 'train',
+        cache_path: Optional[str] = None,
+        split: Optional[str] = None,
     ) -> None:
         """
-        Construct a cached scenario objet.
+        Construct a cached scenario object.
+        There are two methods to get all lidarpc_tokens:
+        1. provide closed_loop_scenario_path to indicate scenario cache path and search for lidarpc_tokens;
+        2. provide lidarpc_tokens directly.
         :param log_name: The log name for the scenario.
         :param token: The token for the scenario.
         :param scenario_type: The scenario type.
-        :param scenario_path: Full path to the scenario.
+        :param closed_loop_scenario_path: path to the cache.
+        :param lidarpc_tokens: list of lidarpc tokens in the cached scenario.
         """
         self._log_name = log_name
         self._token = token
         self._scenario_type = scenario_type
         self.split = split
+        if cache_path is not None:
+            self.cache_path = Path(cache_path)
 
         self._scenario_path = closed_loop_scenario_path
         if self._scenario_path is not None:
@@ -93,7 +99,11 @@ class CachedScenario(AbstractScenario):
 
     def get_number_of_iterations(self) -> int:
         """Inherited, see superclass."""
-        return self._scenario_len
+        # hard code
+        if self._scenario_type == 'Nuscenes_common':
+            return self._scenario_len - 8
+        else:
+            return self._scenario_len
 
     def get_time_point(self) -> TimePoint:
         """Inherited, see superclass."""

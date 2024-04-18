@@ -2,7 +2,8 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 import pickle
-from typing import Dict, List, Set, cast, Optional
+import os
+from typing import Dict, List, Set, cast, Optional, Tuple
 
 from multiprocessing import Pool
 from omegaconf import DictConfig
@@ -68,12 +69,22 @@ def get_s3_scenario_cache(
     return scenario_cache_paths
 
 
-def valid_check(path_and_feature_names):
+def valid_check(path_and_feature_names: Tuple[Path, Set[str]]):
+    """
+    Check whether a scenario path has all feature cache in feature_names set.
+    If not, return None.
+    :param path_and_feature_names: tuple of scenario path and set of required feature names.
+    """
     path, feature_names_set = path_and_feature_names
     return path if feature_names_set <= {feature_name.stem for feature_name in path.iterdir()} else None
 
 
-def valid_check_sequential(path_and_feature_names):
+def valid_check_sequential(path_and_feature_names: Tuple[Path, Set[str]]):
+    """
+    Check whether a sequential scenario path has all feature cache in feature_names set for every frame.
+    If not, return None.
+    :param path_and_feature_names: tuple of scenario path and set of required feature names.
+    """
     scene_path, feature_names_set = path_and_feature_names
     valid = [feature_names_set <= {feature_name.stem for feature_name in path.iterdir()} for path in scene_path.iterdir()]
     if all(valid):
@@ -110,7 +121,7 @@ def get_local_scenario_cache(cache_path: str, feature_names: Optional[Set[str]],
         logger.info("Validate candidate scenarios...")
         logger.info(f"feautre_names : {feature_names}")
         check_func = valid_check_sequential if is_sequential else valid_check
-        with Pool(48) as p:
+        with Pool(os.cpu_count()) as p:
             scenario_cache_dirs = [path for path in tqdm(p.imap(check_func, [(path, feature_names) for path in candidate_scenario_dirs]), total=len(candidate_scenario_dirs)) if path is not None]
         logger.info(f"Found {len(scenario_cache_dirs)} scenarios in cache.")
 
@@ -183,6 +194,12 @@ def extract_scenarios_from_cache(
 def extract_scenarios_from_cache_records(
     cached_scenario_records: List[Dict], worker: WorkerPool, 
 ) -> List[AbstractScenario]:
+    """
+    Extract cached scenarios from cached scenarios record.
+    :param cached_scenario_records: List of cached scenarios info.
+    :param worker: Worker to submit tasks which can be executed in parallel.
+    :return: List of extracted scenarios.
+    """
     logger.info("Loading cached scenario in versatile manner...")
     scenarios = worker_map(worker, create_scenario_from_records, cached_scenario_records)
     return cast(List[AbstractScenario], scenarios)
@@ -206,6 +223,10 @@ def extract_scenarios_from_dataset(cfg: DictConfig, worker: WorkerPool) -> List[
 def build_scenarios(cfg: DictConfig, worker: WorkerPool, model: TorchModuleWrapper) -> List[AbstractScenario]:
     """
     Build the scenario objects that comprise the training dataset.
+    Add versatile caching function, will use cached scenarios directly unless:
+    1. force recompute features are provided;
+    2. no cache record file available;
+    3. there are required features not in cache record file.
     :param cfg: Omegaconf dictionary.
     :param worker: Worker to submit tasks which can be executed in parallel.
     :param model: NN model used for training.
@@ -313,7 +334,8 @@ def create_scenario_from_records(records: List[Dict]) -> List[AbstractScenario]:
             token=record["token"],
             scenario_type=record["scenario_type"],
             lidarpc_tokens=record["lidarpc_tokens"],
-            # split=record["split"],
+            cache_path=record.get("cache_path", None),
+            split=record.get('split', None),
         )
         for record in records
     ]
