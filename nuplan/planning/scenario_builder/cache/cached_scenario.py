@@ -15,8 +15,6 @@ class CachedScenario(AbstractScenario):
     A class representing a cached scenario.
     This class is backend-agnostic, and serves as a pointer to precomputed features.
     """
-    split = 'train'
-
     def __init__(
         self,
         log_name: str,
@@ -25,6 +23,7 @@ class CachedScenario(AbstractScenario):
         closed_loop_scenario_path: Optional[Path] = None,
         lidarpc_tokens: Optional[List[str]] = None,
         cache_path: Optional[str] = None,
+        split: Optional[str] = None,
     ) -> None:
         """
         Construct a cached scenario object.
@@ -40,6 +39,7 @@ class CachedScenario(AbstractScenario):
         self._log_name = log_name
         self._token = token
         self._scenario_type = scenario_type
+        self.split = split
         if cache_path is not None:
             self.cache_path = Path(cache_path)
 

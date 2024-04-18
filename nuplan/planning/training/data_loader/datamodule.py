@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pytorch_lightning as pl
 import torch
 import torch.utils.data
+import torch.distributed as dist
 from omegaconf import DictConfig
 from torch.utils.data.sampler import WeightedRandomSampler
 
@@ -219,18 +220,21 @@ class DataModule(pl.LightningDataModule):
             )
 
             # Validation Dataset
-            # val_samples = self._splitter.get_val_samples(self._all_samples, self._worker)
-            val_samples = train_samples[:200]
+            val_samples = self._splitter.get_val_samples(self._all_samples, self._worker)
+            batch_size = self._dataloader_params.batch_size if self._sequential_val else None
+            effective_batch = dist.get_world_size() * batch_size
+            if len(val_samples) < effective_batch:
+                samples_too_add = effective_batch - len(val_samples)
+                val_samples = val_samples + train_samples[:samples_too_add]
             assert len(val_samples) > 0, 'Splitter returned no validation samples'
 
-            val_batch_size = self._dataloader_params.batch_size if self._sequential_val else None
             self._val_set = create_dataset(
                 val_samples,
                 self._feature_preprocessor,
                 self._val_fraction,
                 "validation",
                 self._val_augmentors,
-                val_batch_size,
+                batch_size,
                 start_iteration = self._start_iteration,
             )
         elif stage == 'test':

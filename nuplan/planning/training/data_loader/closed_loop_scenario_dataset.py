@@ -55,6 +55,14 @@ class ClosedLoopScenarioDatasetV2(torch.utils.data.Dataset):
                 f"divisible by world_size x batch_size. Will drop the last {scenarios_to_drop} scenarios."
             )
             scenarios = scenarios[:-scenarios_to_drop]
+            # scenarios_to_add = (
+            #     (len(scenarios) // effective_batch + 1) * effective_batch - len(scenarios)
+            # )
+            # logger.warning(
+            #     f"Number of scenarios {len(scenarios)} is not "
+            #     f"divisible by world_size x batch_size. Will add the first {scenarios_to_add} scenarios."
+            # )
+            # scenarios = scenarios + scenarios[:scenarios_to_add]
         self._idx2token = {}
         self._token2scenario = {i.token: i for i in scenarios}
         self._scenario_max_len = min(

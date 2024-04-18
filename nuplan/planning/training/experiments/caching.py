@@ -195,6 +195,7 @@ def cache_data(cfg: DictConfig, worker: WorkerPool) -> None:
                     "token": scenario.token + f'_{scenario.perturbation_idx}',
                     "scenario_type": scenario.scenario_type,
                     "lidarpc_tokens": scenario.cache_tokens,
+                    "split": 'train',
                 } for scenario in scenarios if scenario.token not in all_failed_scenarios
             ]
         else:
