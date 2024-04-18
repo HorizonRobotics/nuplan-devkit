@@ -145,7 +145,7 @@ class FeaturePreprocessor:
                     all_features_metadata_entries.append(feature_metadata_entry)
                 except Exception as error:
                     msg = (
-                        f"Failed to compute {builder.get_feature_unique_name()} for scenario token {scenario.token} in log {scenario.log_name}\n"
+                        f"Failed to compute {builder.get_feature_unique_name()} for scenario token {scenario.token} in log {scenario.log_name} at iteration {iteration}\n"
                         f"Error: {error}"
                     )
                     logger.error(msg)

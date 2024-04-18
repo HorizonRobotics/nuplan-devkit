@@ -202,6 +202,10 @@ def cache_data(cfg: DictConfig, worker: WorkerPool) -> None:
         scenario_metadata.append(all_features)
         with open(versatile_cache_pickle_file, 'wb') as f:
             pickle.dump(scenario_metadata, f)
+        if len(all_failed_scenarios) > 0:
+            failed_scenarios_file = versatile_cache_pickle_file.parent / f'{versatile_cache_pickle_file.stem}_cachingfailed.pkl'
+            with open(failed_scenarios_file, 'wb') as f:
+                pickle.dump(all_failed_scenarios, f)
     else:
         cached_metadata = [
             cache_metadata_entry
