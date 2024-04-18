@@ -167,35 +167,7 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
         params.check_val_every_n_epoch = params.max_epochs + 1
         OmegaConf.set_struct(cfg, True)
 
-<<<<<<< HEAD
         return pl.Trainer(**params)
-=======
-        return pl.Trainer(plugins=plugins, **params)
-
-    if cfg.lightning.trainer.checkpoint.resume_training:
-        OmegaConf.set_struct(cfg, False)
-        if isinstance(cfg.lightning.trainer.checkpoint.resume_training, bool):
-            # Resume training from latest checkpoint
-            output_dir = Path(cfg.output_dir)
-            date_format = cfg.date_format
-
-            last_checkpoint = extract_last_checkpoint_from_experiment(output_dir, date_format)
-            if not last_checkpoint:
-                raise ValueError('Resume Training is enabled but no checkpoint was found!')
-
-            params.resume_from_checkpoint = str(last_checkpoint)
-            latest_epoch = torch.load(last_checkpoint)['epoch']
-            params.max_epochs += latest_epoch
-            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
-
-        else:
-            # Resume training from designated checkpoint
-            params.resume_from_checkpoint = str(cfg.lightning.trainer.checkpoint.resume_training)
-            latest_epoch = torch.load(params.resume_from_checkpoint)['epoch']
-            params.max_epochs += latest_epoch
-            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {params.resume_from_checkpoint}')
-        OmegaConf.set_struct(cfg, True)
->>>>>>> feat-v1.2_wenxin
 
     trainer = pl.Trainer(
         callbacks=callbacks,
