@@ -10,7 +10,6 @@ from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.oriented_box import OrientedBox
 from nuplan.common.actor_state.scene_object import SceneObjectMetadata
 from nuplan.common.actor_state.state_representation import StateSE2, StateVector2D, TimePoint
-from nuplan.common.actor_state.state_representation_3d import StateSE3, StateVector3D
 from nuplan.common.actor_state.static_object import StaticObject
 from nuplan.common.actor_state.tracked_objects import TrackedObject
 from nuplan.common.actor_state.tracked_objects_types import AGENT_TYPES, TrackedObjectType
@@ -77,8 +76,7 @@ def _parse_3d_tracked_object_row(row: sqlite3.Row) -> TrackedObject:
     :return: The parsed TrackedObject.
     """
     category_name = row["category_name"]
-    pose = StateSE3(row["x"], row["y"], row["z"], row["yaw"])
-    # pose = StateSE2(row["x"], row["y"], row["yaw"], row["z"])
+    pose = StateSE2(row["x"], row["y"], row["yaw"], row["z"])
     oriented_box = OrientedBox(pose, width=row["width"], length=row["length"], height=row["height"])
 
     # These next two are globals
