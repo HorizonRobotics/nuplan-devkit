@@ -221,7 +221,7 @@ class DataModule(pl.LightningDataModule):
 
             # Validation Dataset
             val_samples = self._splitter.get_val_samples(self._all_samples, self._worker)
-            batch_size = self._dataloader_params.batch_size if self._sequential_val else None
+            batch_size = self._dataloader_params.batch_size
             effective_batch = dist.get_world_size() * batch_size
             if len(val_samples) < effective_batch:
                 samples_too_add = effective_batch - len(val_samples)
