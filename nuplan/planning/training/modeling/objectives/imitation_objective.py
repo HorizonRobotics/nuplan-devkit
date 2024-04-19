@@ -47,6 +47,7 @@ class ImitationObjective(AbstractObjective):
         """
         predicted_trajectory = cast(Trajectory, predictions["trajectory"])
         targets_trajectory = cast(Trajectory, targets["trajectory"])
+        targets_trajectory.data = targets_trajectory.data.float()
         loss_weights = extract_scenario_type_weight(
             scenarios, self._scenario_type_loss_weighting, device=predicted_trajectory.xy.device
         )

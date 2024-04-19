@@ -103,7 +103,7 @@ def compute_or_load_feature(
             raise ValueError(f"Unknown builder type: {type(builder)}")
 
         # If caching is enabled, store the feature
-        if feature.is_valid and cache_path_available:
+        if feature.is_valid and cache_path_available and not getattr(builder, 'no_cache', False):
             logger.debug(f"Saving feature: {file_name} to a file...")
             file_name.parent.mkdir(parents=True, exist_ok=True)
             feature_stored_sucessfully = storing_mechanism.store_computed_feature_to_folder(file_name, feature)
@@ -112,15 +112,15 @@ def compute_or_load_feature(
         try:
             feature = storing_mechanism.load_computed_feature_from_folder(file_name, builder.get_feature_type())
             # hard code
-            if builder.get_feature_unique_name() == 'bevmap':
-                feature.data = feature.data[:3]
+            # if builder.get_feature_unique_name() == 'bevmap':
+            #     feature.data = feature.data[:3]
         except Exception:
             if isinstance(builder, AbstractFeatureBuilder):
                 feature = builder.get_features_from_scenario(scenario, iteration)
             elif isinstance(builder, AbstractTargetBuilder):
                 feature = builder.get_targets(scenario)
             # If caching is enabled, store the feature
-            if feature.is_valid and cache_path_available:
+            if feature.is_valid and cache_path_available and not getattr(builder, 'no_cache', False):
                 logger.debug(f"Saving feature: {file_name} to a file...")
                 file_name.parent.mkdir(parents=True, exist_ok=True)
                 feature_stored_sucessfully = storing_mechanism.store_computed_feature_to_folder(file_name, feature)
