@@ -45,7 +45,7 @@ def compute_or_load_feature(
                 frame_token = scenario.cache_tokens[iteration]
             else:
                 frame_token = scenario._lidarpc_tokens[iteration]
-            if hasattr(scenario, 'cache_path'):
+            if hasattr(scenario, 'cache_path') and scenario.cache_path is not None:
                 cache_root = scenario.cache_path
             else:
                 cache_root = cache_path

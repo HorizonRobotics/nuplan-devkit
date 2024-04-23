@@ -335,7 +335,7 @@ def create_scenario_from_records(records: List[Dict]) -> List[AbstractScenario]:
             scenario_type=record["scenario_type"],
             lidarpc_tokens=record["lidarpc_tokens"],
             cache_path=record.get("cache_path", None),
-            split=record.get('split', None),
+            split=record.get('split', 'train'),
         )
         for record in records
     ]
