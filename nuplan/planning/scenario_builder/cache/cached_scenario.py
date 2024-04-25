@@ -42,13 +42,15 @@ class CachedScenario(AbstractScenario):
         self.split = split
         if cache_path is not None:
             self.cache_path = Path(cache_path)
-
+        else:
+            self.cache_path = None
+        
         self._scenario_path = closed_loop_scenario_path
         if self._scenario_path is not None:
             time_stamped_paths = sorted(list(self._scenario_path.iterdir()), key= lambda path: int(path.stem.split("_")[0]))
             self._scenario_len = len(time_stamped_paths)
             self._lidarpc_tokens = [path.stem.split("_")[1] for path in time_stamped_paths]
-        elif lidarpc_tokens is not None:
+        if lidarpc_tokens is not None:
             self._lidarpc_tokens = lidarpc_tokens
             self._scenario_len = len(lidarpc_tokens)
 
@@ -59,7 +61,14 @@ class CachedScenario(AbstractScenario):
         """
         return (
             self.__class__,
-            (self._log_name, self._token, self._scenario_type),
+            (self._log_name,
+             self._token,
+             self._scenario_type,
+             self._scenario_path,
+             self._lidarpc_tokens,
+             self.cache_path,
+             self.split,
+            ),
         )
 
     @property
