@@ -121,37 +121,59 @@ def cache_data(cfg: DictConfig, worker: WorkerPool) -> None:
     """
     assert cfg.cache.cache_path is not None, f"Cache path cannot be None when caching, got {cfg.cache.cache_path}"
 
-    scenario_builder = build_scenario_builder(cfg)
-    if int(os.environ.get("NUM_NODES", 1)) > 1 and cfg.distribute_by_scenario:
-        # Partition differently based on how the scenario builder loads the data
-        repartition_strategy = scenario_builder.repartition_strategy
-        if repartition_strategy == RepartitionStrategy.REPARTITION_FILE_DISK:
-            scenario_filter = DistributedScenarioFilter(
-                cfg=cfg,
-                worker=worker,
-                node_rank=int(os.environ.get("NODE_RANK", 0)),
-                num_nodes=int(os.environ.get("NUM_NODES", 1)),
-                synchronization_path=cfg.cache.cache_path,
-                timeout_seconds=cfg.get("distributed_timeout_seconds", 3600),
-                distributed_mode=cfg.get("distributed_mode", DistributedMode.LOG_FILE_BASED),
+    # scenario_builder = build_scenario_builder(cfg)
+    # if int(os.environ.get("NUM_NODES", 1)) > 1 and cfg.distribute_by_scenario:
+    #     # Partition differently based on how the scenario builder loads the data
+    #     repartition_strategy = scenario_builder.repartition_strategy
+    #     if repartition_strategy == RepartitionStrategy.REPARTITION_FILE_DISK:
+    #         scenario_filter = DistributedScenarioFilter(
+    #             cfg=cfg,
+    #             worker=worker,
+    #             node_rank=int(os.environ.get("NODE_RANK", 0)),
+    #             num_nodes=int(os.environ.get("NUM_NODES", 1)),
+    #             synchronization_path=cfg.cache.cache_path,
+    #             timeout_seconds=cfg.get("distributed_timeout_seconds", 3600),
+    #             distributed_mode=cfg.get("distributed_mode", DistributedMode.LOG_FILE_BASED),
+    #         )
+    #         scenarios = scenario_filter.get_scenarios()
+    #     elif repartition_strategy == RepartitionStrategy.INLINE:
+    #         scenarios = build_scenarios_from_config(cfg, scenario_builder, worker)
+    #         num_nodes = int(os.environ.get("NUM_NODES", 1))
+    #         node_id = int(os.environ.get("NODE_RANK", 0))
+    #         scenarios = chunk_list(scenarios, num_nodes)[node_id]
+    #     else:
+    #         expected_repartition_strategies = [e.value for e in RepartitionStrategy]
+    #         raise ValueError(
+    #             f"Expected repartition strategy to be in {expected_repartition_strategies}, got {repartition_strategy}."
+    #         )
+    # else:
+    #     logger.debug(
+    #         "Building scenarios without distribution, if you're running on a multi-node system, make sure you aren't"
+    #         "accidentally caching each scenario multiple times!"
+    #     )
+    #     scenarios = build_scenarios_from_config(cfg, scenario_builder, worker)
+
+    import pickle
+    from pathlib import Path
+    from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_utils import ScenarioExtractionInfo
+    with open('/home/users/siqi01.chai/hoplan-alf/scenario_all_test_no_first.pkl', 'rb') as f:
+        # to fix a bug while reading csv, we use scenario_all_test_no_first instead of scenario_all_test
+        scenarios_all = pickle.load(f)
+    scenarios = []
+
+    for sid, s in enumerate(scenarios_all):
+        # scenario_model_path = '/mnt/nas20/siqi01.chai/train-scenes-300/train-scene-{}/model-new/checkpoints/PointTexture_stage_0_epoch_23.pth'
+        scenario_model_path = '/mnt/nas20/siqi01.chai/test-scenes/test-scene-{}/model-new/checkpoints/PointTexture_stage_0_epoch_23.pth'
+        scenario_model_path = Path(scenario_model_path.format(sid))
+        new_extraction_info = ScenarioExtractionInfo(
+            scenario_name=s._scenario_extraction_info.scenario_name,
+            scenario_duration=s._scenario_extraction_info.scenario_duration,
+            extraction_offset=s._scenario_extraction_info.extraction_offset,
+            subsample_ratio=1,
             )
-            scenarios = scenario_filter.get_scenarios()
-        elif repartition_strategy == RepartitionStrategy.INLINE:
-            scenarios = build_scenarios_from_config(cfg, scenario_builder, worker)
-            num_nodes = int(os.environ.get("NUM_NODES", 1))
-            node_id = int(os.environ.get("NODE_RANK", 0))
-            scenarios = chunk_list(scenarios, num_nodes)[node_id]
-        else:
-            expected_repartition_strategies = [e.value for e in RepartitionStrategy]
-            raise ValueError(
-                f"Expected repartition strategy to be in {expected_repartition_strategies}, got {repartition_strategy}."
-            )
-    else:
-        logger.debug(
-            "Building scenarios without distribution, if you're running on a multi-node system, make sure you aren't"
-            "accidentally caching each scenario multiple times!"
-        )
-        scenarios = build_scenarios_from_config(cfg, scenario_builder, worker)
+        s._scenario_extraction_info = new_extraction_info
+        if scenario_model_path.is_file():
+            scenarios.append(s)
 
     data_points = [{"scenario": scenario, "cfg": cfg} for scenario in scenarios]
     logger.info("Starting dataset caching of %s files...", str(len(data_points)))
