@@ -104,6 +104,7 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
         lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
         warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
         objective_aggregate_mode=cfg.objective_aggregate_mode,
+        gradient_clip_val=cfg.common_cfg.gradient_clip_val,
     )
     if cfg.checkpoint.ckpt_path is not None:
         assert Path(cfg.checkpoint.ckpt_path).is_file()

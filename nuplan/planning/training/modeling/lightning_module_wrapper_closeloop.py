@@ -42,6 +42,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         lr_scheduler: Optional[DictConfig] = None,
         warm_up_lr_scheduler: Optional[DictConfig] = None,
         objective_aggregate_mode: str = 'mean',
+        gradient_clip_val: Optional[Union[int, float]] = None,
     ) -> None:
         """
         Initializes the class.
@@ -76,6 +77,13 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         # sequential model essentials
         self._token2cache: Dict[str, FeatureCacheContainer] = {}
 
+        # full buffer optimization
+        self.full_buffer_optimization = model.full_buffer_optimization
+        self.buffer_size = model.buffer_size
+        if self.full_buffer_optimization:
+            self.automatic_optimization = False
+        self.gradient_clip_val = gradient_clip_val
+
     def _step(self, batch: Tuple[FeaturesType, TargetsType], prefix: str, batch_idx: int) -> Dict[str, Any]:
         """
         Propagates the model forward and backwards and computes/logs losses and metrics.
@@ -89,17 +97,34 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         features, targets, scenarios = batch
 
         predictions = self.forward(features)
-        objectives = self._compute_objectives(predictions, targets, scenarios)
-        metrics = self._compute_metrics(predictions, targets)
-        loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
-        if prefix == 'val':
-            self._update_aggregated_metrics(predictions, targets)
 
-        self._log_step(loss, objectives, metrics, prefix, batch_idx=batch_idx)
+        should_compute_loss = True
+        if self.full_buffer_optimization:
+            buffer = features["latent_feature_buffer"]
+            if len(buffer.shape) < 5 or buffer.shape[1] < self.buffer_size:
+                should_compute_loss = False
+                    
+        if should_compute_loss:
+            objectives = self._compute_objectives(predictions, targets, scenarios)
+            metrics = self._compute_metrics(predictions, targets)
+            loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
+            if prefix == 'val':
+                self._update_aggregated_metrics(predictions, targets)
 
-        return_dict = {
-            "loss": loss,
-        }
+            self._log_step(loss, objectives, metrics, prefix, batch_idx=batch_idx)
+
+            return_dict = {"loss": loss}
+        else:
+            self._log_step(None, None, None, prefix, batch_idx=batch_idx)
+            return_dict = {}
+        
+        if should_compute_loss and not self.automatic_optimization:
+            self.manual_backward(loss)
+            if self.gradient_clip_val is not None and self.gradient_clip_val > 0.0:
+                self.clip_gradients(self.optimizers(), gradient_clip_val=self.gradient_clip_val, gradient_clip_algorithm="norm")
+            self.optimizers().step()
+            self.optimizers().zero_grad()
+
         return_dict.update(predictions)
 
         if "out_feature" in return_dict:
@@ -113,10 +138,10 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
 
     def _log_step(
         self,
-        loss: torch.Tensor,
-        objectives: Dict[str, torch.Tensor],
-        metrics: Dict[str, torch.Tensor],
-        prefix: str,
+        loss: Optional[torch.Tensor] = None,
+        objectives: Optional[Dict[str, torch.Tensor]] = None,
+        metrics: Optional[Dict[str, torch.Tensor]] = None,
+        prefix: str = 'train',
         loss_name: str = 'loss',
         batch_idx: int = 0,
         **kwargs
@@ -130,17 +155,18 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param prefix: prefix prepended at each artifact's name
         :param loss_name: name given to the loss for logging
         """
-        self.log('idx', batch_idx, prog_bar=True, batch_size=self.batch_size)
-        self.log(f'loss/{prefix}_{loss_name}', loss, batch_size=self.batch_size)
+        self.log('idx', batch_idx, prog_bar=True)
+        if loss is not None:
+            self.log(f'loss/{prefix}_{loss_name}', loss)
 
-        for key, value in objectives.items():
-            self.log(f'objectives/{prefix}_{key}', value, batch_size=self.batch_size)
+            for key, value in objectives.items():
+                self.log(f'objectives/{prefix}_{key}', value)
 
-        for key, value in metrics.items():
-            self.log(f'metrics/{prefix}_{key}', value, batch_size=self.batch_size)
+            for key, value in metrics.items():
+                self.log(f'metrics/{prefix}_{key}', value)
 
         for key, value in kwargs.items():
-            self.log(f'{key}', value, batch_size=self.batch_size)
+            self.log(f'{key}', value)    
 
     def training_step(self, batch: Tuple[FeaturesType, TargetsType], batch_idx: int) -> torch.Tensor:
         """

@@ -35,7 +35,7 @@ trainer:
     fast_dev_run: false  # runs 1 batch of train/val/test for sanity
 
     accumulate_grad_batches: 1  # accumulates gradients every n batches
-    gradient_clip_val: 0.0  # value to clip gradients
+    gradient_clip_val: null  # value to clip gradients
     gradient_clip_algorithm: norm  # [value, norm] method to clip gradients
 
     # checkpoint_callback: true  # enable default checkpoint
