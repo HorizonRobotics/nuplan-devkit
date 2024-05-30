@@ -358,6 +358,9 @@ class StateSE2(Point2D):
         super().__init__(x, y, z)
         self.heading = heading
 
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(x={self.x}, y={self.y}, heading={self.heading}, z={self.z})"
+
     @property
     def point(self, se3=False) -> Point2D:
         """
@@ -489,8 +492,12 @@ class ProgressStateSE2(StateSE2):
     StateSE2 parameterized by progress
     """
 
-    progress: float  # [m] distance along a path
-    __slots__ = "progress"
+    progress: float = 0.0  # [m] distance along a path
+    # __slots__ = "progress"
+    
+    def __init__(self, x, y, heading, progress, z=0.0):
+        super().__init__(x, y, heading, z)
+        self.progress = progress
 
     @staticmethod
     def deserialize(vector: List[float]) -> ProgressStateSE2:
@@ -517,7 +524,7 @@ class TemporalStateSE2(StateSE2):
     Representation of a temporal state
     """
 
-    time_point: TimePoint  # state at a time
+    time_point: TimePoint = 0.0 # state at a time
 
     @property
     def time_us(self) -> int:

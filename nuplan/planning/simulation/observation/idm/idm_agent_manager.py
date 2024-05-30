@@ -9,6 +9,7 @@ from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.state_representation import StateSE2
 from nuplan.common.actor_state.tracked_objects import TrackedObject, TrackedObjects
 from nuplan.common.geometry.transform import rotate_angle
+from nuplan.common.geometry.compute import compute_distance
 from nuplan.common.maps.abstract_map import AbstractMap
 from nuplan.common.maps.abstract_map_objects import StopLine
 from nuplan.common.maps.maps_datatypes import SemanticMapLayer, TrafficLightStatusType
@@ -78,6 +79,9 @@ class IDMAgentManager:
                 )
                 assert intersecting_agents.contains(agent_token), "Agent's baseline does not intersect the agent itself"
 
+                # Compute distance to ego vehicle. This is for CIPV.
+                distance_from_ego = compute_distance(ego_state.rear_axle, agent.to_se2())
+
                 # Checking if there are agents intersecting THIS agent's baseline.
                 # Hence, we are checking for at least 2 intersecting agents.
                 if intersecting_agents.size > 1:
@@ -118,6 +122,8 @@ class IDMAgentManager:
                 agent.propagate(
                     IDMLeadAgentState(progress=relative_distance, velocity=projected_velocity, length_rear=length_rear),
                     tspan,
+                    iteration,
+                    distance_from_ego,
                 )
                 self.agent_occupancy.set(agent_token, agent.projected_footprint)
                 self.agent_occupancy.remove(inactive_stop_line_tokens)

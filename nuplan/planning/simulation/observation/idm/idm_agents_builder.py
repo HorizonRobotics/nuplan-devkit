@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 
 import numpy as np
 from tqdm import tqdm
@@ -63,6 +63,7 @@ def build_idm_agents_on_map_rails(
     minimum_path_length: float,
     scenario: AbstractScenario,
     open_loop_detections_types: List[TrackedObjectType],
+    cipv_tokens: Set[str] = None,
 ) -> Tuple[UniqueIDMAgents, OccupancyMap]:
     """
     Build unique agents from a scenario. InterpolatedPaths are created for each agent according to their driven path
@@ -147,6 +148,7 @@ def build_idm_agents_on_map_rails(
                 route=[route],
                 policy=IDMPolicy(target_velocity, min_gap_to_lead_agent, headway_time, accel_max, decel_max),
                 minimum_path_length=minimum_path_length,
+                is_cipv=agent.track_token in cipv_tokens,
             )
 
     return unique_agents, occupancy_map

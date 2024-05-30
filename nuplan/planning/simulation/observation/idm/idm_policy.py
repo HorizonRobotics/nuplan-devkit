@@ -82,7 +82,7 @@ class IDMPolicy:
 
     @staticmethod
     def idm_model(
-        time_points: List[float], state_variables: List[float], lead_agent: List[float], params: List[float]
+        time_points: List[float], state_variables: List[float], lead_agent: List[float], params: List[float], cipv_scale: float,
     ) -> List[Any]:
         """
         Defines the differential equations for IDM.
@@ -112,6 +112,8 @@ class IDMPolicy:
         target_velocity, min_gap_to_lead_agent, headway_time, accel_max, decel_max = params
         acceleration_exponent = 4  # Usually set to 4
 
+        target_velocity = target_velocity * cipv_scale
+
         # convenience definitions
         s_star = (
             min_gap_to_lead_agent
@@ -127,7 +129,7 @@ class IDMPolicy:
         return [x_dot, v_agent_dot]
 
     def solve_forward_euler_idm_policy(
-        self, agent: IDMAgentState, lead_agent: IDMLeadAgentState, sampling_time: float
+        self, agent: IDMAgentState, lead_agent: IDMLeadAgentState, sampling_time: float, cipv_scale: float,
     ) -> IDMAgentState:
         """
         Solves Solves an initial value problem for a system of ODEs using forward euler.
@@ -140,7 +142,7 @@ class IDMPolicy:
         """
         params = self.idm_params
 
-        x_dot, v_agent_dot = self.idm_model([], agent.to_array(), lead_agent.to_array(), params)
+        x_dot, v_agent_dot = self.idm_model([], agent.to_array(), lead_agent.to_array(), params, cipv_scale)
 
         return IDMAgentState(
             agent.progress + sampling_time * x_dot,

@@ -1,5 +1,6 @@
 from collections import deque
 from dataclasses import dataclass
+from turtle import distance
 from typing import Deque, Dict, List, Optional
 
 import numpy as np
@@ -21,6 +22,8 @@ from nuplan.planning.simulation.observation.idm.utils import create_path_from_se
 from nuplan.planning.simulation.path.interpolated_path import InterpolatedPath
 from nuplan.planning.simulation.path.utils import trim_path, trim_path_up_to_progress
 
+import logging
+logger = logging.getLogger(__file__)
 
 @dataclass(frozen=True)
 class IDMInitialState:
@@ -45,6 +48,7 @@ class IDMAgent:
         policy: IDMPolicy,
         minimum_path_length: float,
         max_route_len: int = 5,
+        is_cipv: bool = False,
     ):
         """
         Constructor for IDMAgent.
@@ -54,6 +58,7 @@ class IDMAgent:
         :param policy: policy controlling the agent behavior
         :param minimum_path_length: [m] The minimum path length
         :param max_route_len: The max number of route elements to store
+        :param is_cipv: Whether is vehicle is the closest in-path vehicle for ego, at any time
         """
         self._start_iteration = start_iteration  # scenario iteration where agent first appears
         self._initial_state = initial_state
@@ -68,7 +73,17 @@ class IDMAgent:
         self._requires_state_update: bool = True
         self._full_agent_state: Optional[Agent] = None
 
-    def propagate(self, lead_agent: IDMLeadAgentState, tspan: float) -> None:
+        # Is the agent at any time a cipv?
+        self._is_cipv = is_cipv
+        # Every half of this many iterations, if the agent is cipv, its target velocity will be "flipped" to create an emergency brake situation
+        self._T = 20
+        self._omega = 2 * np.pi / self._T
+        self._brake_condition = False
+        self._brake_counter = 0
+        self._resume_counter = 0
+        self._in_cooldown = False
+
+    def propagate(self, lead_agent: IDMLeadAgentState, tspan: float, iteration: int, distance_from_ego: float) -> None:
         """
         Propagate agent forward according to the IDM policy.
 
@@ -79,8 +94,39 @@ class IDMAgent:
         if speed_limit is not None and speed_limit > 0.0:
             self._policy.target_velocity = speed_limit
 
+        # Speed scale is a square save that alternates between 1 and 0.1
+        cipv_speed_scale = 1.0
+        if self._is_cipv:
+            # if distance_from_ego < 25.0 and self._brake_counter == 0 and not self._in_cooldown:
+            if self._brake_counter == 0 and not self._in_cooldown:
+                # Start emergency brake
+                cipv_speed_scale = 0.1
+                self._brake_counter += 1
+            elif 0 < self._brake_counter < 20:
+                # During the brake
+                cipv_speed_scale = 0.1
+                self._brake_counter += 1
+                if self._brake_counter == 20:
+                    # End the brake, lease some time for cipv to resume normal behavior
+                    self._brake_counter = 0
+                    self._resume_counter += 1
+                    self._in_cooldown = True
+                    cipv_speed_scale = 1.0
+            elif self._in_cooldown:
+                cipv_speed_scale = 1.0
+                self._resume_counter += 1
+                if self._resume_counter == 40:
+                    self._resume_counter = 0
+                    self._in_cooldown = False
+            
+        # if self._is_cipv:
+        # if self._brake_counter > 0 and not self._in_cooldown:
+        #     # cipv_speed_scale = (np.sign(np.sin(self._omega * iteration)) + 1) * (0.9 / 2) + 0.1
+        #     cipv_speed_scale = 0.1
+        # else:
+        #     cipv_speed_scale = 1.0
         solution = self._policy.solve_forward_euler_idm_policy(
-            IDMAgentState(0, self._state.velocity), lead_agent, tspan
+            IDMAgentState(0, self._state.velocity), lead_agent, tspan, cipv_speed_scale
         )
         self._state.progress += solution.progress
         self._state.velocity = max(solution.velocity, 0)

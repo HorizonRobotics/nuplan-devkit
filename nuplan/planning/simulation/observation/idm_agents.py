@@ -12,6 +12,9 @@ from nuplan.planning.simulation.observation.idm.idm_agents_builder import build_
 from nuplan.planning.simulation.observation.observation_type import DetectionsTracks, Observation
 from nuplan.planning.simulation.simulation_time_controller.simulation_iteration import SimulationIteration
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 class IDMAgents(AbstractObservation):
     """
@@ -61,6 +64,21 @@ class IDMAgents(AbstractObservation):
         self._planned_trajectory_sample_interval = planned_trajectory_sample_interval
         self._radius = radius
 
+        # Get track tokens of ego vehicle's cipv. Their policy will change slightly.
+        start = self._scenario.future_pathway_iteration + 1
+        end = self._scenario.get_number_of_iterations()
+        fvs = set()
+        for i in range(start, end):
+            try:
+                fv, _, _ = scenario.get_front_agents_at_iteration(iteration=i, max_distance=50, lane_width=5.0, num_steps=12, interval=4)
+                if fv is not None:
+                    fvs.add(fv)
+            except:
+                continue
+        self._cipv_track_tokens = fvs
+
+        logger.info(f"scenario {scenario.token}, cipv is {self._cipv_track_tokens}")
+
         # Prepare IDM agent manager
         self._idm_agent_manager: Optional[IDMAgentManager] = None
         self._initialize_open_loop_detection_types(open_loop_detections_types)
@@ -97,6 +115,7 @@ class IDMAgents(AbstractObservation):
                 self._minimum_path_length,
                 self._scenario,
                 self._open_loop_detections_types,
+                self._cipv_track_tokens,
             )
             self._idm_agent_manager = IDMAgentManager(agents, agent_occupancy, self._scenario.map_api)
 

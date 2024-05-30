@@ -29,6 +29,10 @@ from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_filter_utils imp
 from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_utils import ScenarioMapping, absolute_path_to_log_name
 from nuplan.planning.scenario_builder.scenario_filter import ScenarioFilter
 from nuplan.planning.utils.multithreading.worker_utils import WorkerPool, worker_map
+from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_utils import (
+    ScenarioExtractionInfo,
+)
+import dataclasses
 
 logger = logging.getLogger(__name__)
 
@@ -251,15 +255,29 @@ class NuPlanScenarioBuilder(AbstractScenarioBuilder):
 
     def get_scenarios(self, scenario_filter: ScenarioFilter, worker: WorkerPool) -> List[AbstractScenario]:
         """Implemented. See interface."""
-        # Create scenario dictionary and series of filters to apply
-        scenario_dict = self._create_scenarios(scenario_filter, worker)
-        filter_wrappers = self._create_filter_wrappers(scenario_filter, worker)
+        path = "/mnt/nas20/jingyu.qian/scenario_train_mini_perturb_valid_filtered.pkl"
+        # path = "/mnt/nas25/wenxin.shao/nuplan_cache/e2e_versatile_cache_new/scenario_with_front_agent.pkl"
+        logger.info(f"Getting scenarios from {path}")
+        import pickle
+        with open(path, "rb") as f:
+            scenarios = pickle.load(f)
+        # scenarios = [item["scenario"] for item in scenarios[:20]]
+        scenarios = scenarios[:20]
+        for scenario in scenarios:
+            new_extraction_info = dataclasses.replace(scenario._scenario_extraction_info, subsample_ratio = 0.5)
+            scenario._scenario_extraction_info = new_extraction_info
+            if hasattr(scenario, "_lidarpc_tokens"):
+                del scenario._lidarpc_tokens
+        return scenarios
+        # # Create scenario dictionary and series of filters to apply
+        # scenario_dict = self._create_scenarios(scenario_filter, worker)
+        # filter_wrappers = self._create_filter_wrappers(scenario_filter, worker)
 
-        # Apply filtering strategy sequentially to the scenario dictionary
-        for filter_wrapper in filter_wrappers:
-            scenario_dict = filter_wrapper.run(scenario_dict)
+        # # Apply filtering strategy sequentially to the scenario dictionary
+        # for filter_wrapper in filter_wrappers:
+        #     scenario_dict = filter_wrapper.run(scenario_dict)
 
-        return scenario_dict_to_list(scenario_dict, shuffle=scenario_filter.shuffle)  # type: ignore
+        # return scenario_dict_to_list(scenario_dict, shuffle=scenario_filter.shuffle)  # type: ignore
 
     @property
     def repartition_strategy(self) -> RepartitionStrategy:
