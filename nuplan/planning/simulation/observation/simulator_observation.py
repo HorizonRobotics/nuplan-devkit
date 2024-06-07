@@ -11,6 +11,8 @@ import torch
 from torchvision.transforms.functional import resize, crop, to_pil_image
 import cv2
 import PIL.Image as PilImage
+from sklearn.neighbors import KNeighborsRegressor
+
 
 from nuplan.planning.simulation.observation.simulator.datasets.dynamic import rescale_K
 from nuplan.planning.simulation.observation.simulator.pipelines.ogl import get_net, get_texture
@@ -152,6 +154,17 @@ class SimulatorObservation(AbstractObservation):
         self.model.eval()
         self.model.cuda()
 
+        # KNN for gt z value estimate, we will need to to ran simulation
+        self.knn = KNeighborsRegressor(n_neighbors=3)
+        scenario_frames = len(self.scenario._lidarpc_tokens)
+        knn_xy = []
+        knn_z = []
+        for frame_i in range(scenario_frames):
+            gt_pose = self.scenario.get_3d_ego_transform_at_iteration(iteration=frame_i)
+            knn_xy.append([gt_pose[0], gt_pose[1]])
+            knn_z.append(gt_pose[2])
+        self.knn.fit(np.array(knn_xy), np.array(knn_z))
+
 
     def get_observation(self, ego_state: EgoState) -> SensorsWithTracks:
         # imgs = torch.rand(6, 3, 224, 480)
@@ -195,7 +208,10 @@ class SimulatorObservation(AbstractObservation):
                 [0.0, np.sin(roll), np.cos(roll)],
             ])
         ego2world[:3, :3] = reduce(np.dot, [ego2world[:3, :3], pitch_m, roll_m])
-        ego2world[2, 3] = ego_log[2]
+        knn_query = np.array([[ego_log[0], ego_log[1]]])
+        knn_z_estimate = self.knn.predict(knn_query)[0]
+        ego2world[2, 3] = knn_z_estimate
+        # ego2world[2, 3] = ego_log[2]
         world2ego = np.linalg.inv(ego2world)
         
         batch_view_matrix = []
