@@ -1,0 +1,9 @@
+[done] efficient initialization: https://lightning.ai/docs/pytorch/stable/advanced/model_init.html
+callbacks: 
+    SWA: https://lightning.ai/docs/pytorch/stable/advanced/training_tricks.html#stochastic-weight-averaging
+    lr_finder: https://lightning.ai/docs/pytorch/stable/advanced/training_tricks.html#using-lightning-s-built-in-lr-finder
+    model ema
+[done] conditional formatting yaml with hydra
+[wont do] hydra env_set: https://hydra.cc/docs/1.1/configure_hydra/job/#hydrajobenv_set
+[failed] hydra color log: https://hydra.cc/docs/1.1/plugins/colorlog/
+[done] load a packed scenario pickle file directly in scenario builder

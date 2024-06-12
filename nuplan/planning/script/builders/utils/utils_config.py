@@ -34,16 +34,6 @@ def update_config_for_training(cfg: DictConfig) -> None:
 
             Path(cfg.cache.cache_path).mkdir(parents=True, exist_ok=True)
 
-    if cfg.lightning.trainer.overfitting.enable:
-        cfg.data_loader.params.num_workers = 0
-
-    if cfg.gpu and torch.cuda.is_available():
-        cfg.lightning.trainer.params.gpus = -1
-    else:
-        cfg.lightning.trainer.params.gpus = None
-        cfg.lightning.trainer.params.accelerator = None
-        cfg.lightning.trainer.params.precision = 32
-
     # Save all interpolations and remove keys that were only used for interpolation and have no further use.
     OmegaConf.resolve(cfg)
 
@@ -256,22 +246,15 @@ def get_num_gpus_used(cfg: DictConfig) -> int:
 
     if num_gpus == -1:  # if environment variable WORLD_SIZE is not set, find from trainer
         logger.info("WORLD_SIZE was not set.")
-        trainer_num_gpus = cfg.lightning.trainer.params.gpus
+        trainer_num_gpus = cfg.lightning.trainer.params.devices
 
-        if isinstance(trainer_num_gpus, str):
-            raise RuntimeError("Error, please specify gpus as integer. Received string.")
-        trainer_num_gpus = cast(int, trainer_num_gpus)
-
-        if trainer_num_gpus == -1:  # if trainer gpus = -1, all gpus are used, so find all available devices
-            logger.info(
-                "PytorchLightning Trainer gpus was set to -1, finding number of GPUs used from torch.cuda.device_count()."
-            )
+        if trainer_num_gpus == "auto":
             cuda_num_gpus = torch.cuda.device_count() * int(os.getenv("NUM_NODES", 1))
             num_gpus = cuda_num_gpus
-
-        else:  # if trainer gpus is not -1
-            logger.info(f"Trainer gpus was set to {trainer_num_gpus}, using this as the number of gpus.")
+        elif isinstance(trainer_num_gpus, int):
             num_gpus = trainer_num_gpus
+        elif isinstance(trainer_num_gpus, list):
+            num_gpus = len(trainer_num_gpus)
 
     num_gpus = int(num_gpus)
     logger.info(f"Number of gpus found to be in use: {num_gpus}")

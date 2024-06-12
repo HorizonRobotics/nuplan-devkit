@@ -40,24 +40,25 @@ def build_training_engine(cfg: DictConfig, worker: WorkerPool) -> TrainingEngine
     """
     logger.info('Building training engine...')
 
-    # Create model
-    torch_module_wrapper = build_torch_module_wrapper(cfg.model)
+    # Build trainer
+    trainer = build_trainer(cfg)
+
+    # Force creating a model directly on the target device with the desired precision
+    with trainer.init_module():
+        # Create model
+        torch_module_wrapper = build_torch_module_wrapper(cfg.model)
+        # Build lightning module
+        model = build_lightning_module(cfg, torch_module_wrapper)
 
     # Build the datamodule
     datamodule = build_lightning_datamodule(cfg, worker, torch_module_wrapper)
 
-    if cfg.lightning.trainer.params.accelerator == 'ddp':  # Update the learning rate parameters to suit ddp
+    if cfg.lightning.trainer.params.strategy == 'ddp':  # Update the learning rate parameters to suit ddp
         cfg = scale_cfg_for_distributed_training(cfg, datamodule=datamodule, worker=worker)
     else:
         logger.info(
             f'Updating configs based on {cfg.lightning.trainer.params.accelerator} strategy is currently not supported. Optimizer and LR Scheduler configs will not be updated.'
         )
-
-    # Build lightning module
-    model = build_lightning_module(cfg, torch_module_wrapper)
-
-    # Build trainer
-    trainer = build_trainer(cfg)
 
     engine = TrainingEngine(trainer=trainer, datamodule=datamodule, model=model)
 
