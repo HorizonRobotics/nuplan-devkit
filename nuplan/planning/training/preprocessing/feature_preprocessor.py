@@ -140,7 +140,7 @@ class FeaturePreprocessor:
             if self._versatile_cache:
                 try:
                     feature, feature_metadata_entry = compute_or_load_feature(
-                        scenario, self._cache_path, builder, self._storing_mechanism, self._force_feature_computation, iteration, self._versatile_cache,           )
+                        scenario, self._cache_path, builder, self._storing_mechanism, self._force_feature_computation, iteration, self._versatile_cache,)
                     all_features[builder.get_feature_unique_name()] = feature
                     all_features_metadata_entries.append(feature_metadata_entry)
                 except Exception as error:
@@ -153,7 +153,7 @@ class FeaturePreprocessor:
                     all_features_metadata_entries.append(None)
             else:
                 feature, feature_metadata_entry = compute_or_load_feature(
-                    scenario, self._cache_path, builder, self._storing_mechanism, self._force_feature_computation, iteration, self._versatile_cache,           )
+                    scenario, self._cache_path, builder, self._storing_mechanism, self._force_feature_computation, iteration, self._versatile_cache,)
                 all_features[builder.get_feature_unique_name()] = feature
                 all_features_metadata_entries.append(feature_metadata_entry)
 

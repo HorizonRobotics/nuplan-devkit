@@ -6,7 +6,7 @@ datamodule:
 params:
   batch_size: 2  # batch size per GPU
   num_workers: 8  # number of dataloader workers
-  pin_memory: ${gpu}  # allocate dataloader examples in a page-locked memory for faster host-to-device transfer
+  pin_memory: ${eval:'"${lightning.trainer.params.accelerator}"=="gpu"'}  # allocate dataloader examples in a page-locked memory for faster host-to-device transfer
   drop_last: true  # drop the last examples if the batch is not complete
   # The following 3 parameters control the open/closed-loop behavior 
   # For example, for open-loop use 3 "false"s.

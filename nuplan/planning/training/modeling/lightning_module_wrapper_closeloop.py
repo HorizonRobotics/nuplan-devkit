@@ -1,8 +1,8 @@
-import copy
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
+from flatdict import FlatDict
 from omegaconf import DictConfig
 from torchmetrics import Metric
 
@@ -18,9 +18,6 @@ from nuplan.planning.training.modeling.types import (FeaturesType,
                                                      ScenarioListType,
                                                      TargetsType)
 
-from nuplan_extent.planning.training.modeling.sequential_utilities.feature_cache import FeatureCacheContainer
-from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
-    AbstractTrainingController
 from .lightning_module_wrapper import LightningModuleWrapper
 
 logger = logging.getLogger(__name__)
@@ -70,11 +67,13 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
 
         self.batch_size = batch_size
 
-        # closed loop essentials
+        # closed loop essentials, maps a str to an AbstractTrainingController
+        # Leave blank if not closed loop training
         self._token2state: Dict[str, AbstractTrainingController] = {}  # State memory for every scenario
 
-        # sequential model essentials
-        self._token2cache: Dict[str, FeatureCacheContainer] = {}
+        # sequential model essentials, maps a str to a FeatureCacheContainer
+        # Leave blank if not closed loop training
+        self._token2cache = {}
 
     def _step(self, batch: Tuple[FeaturesType, TargetsType], prefix: str, batch_idx: int) -> Dict[str, Any]:
         """
@@ -89,8 +88,8 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         features, targets, scenarios = batch
 
         predictions = self.forward(features)
-        objectives = self._compute_objectives(predictions, targets, scenarios)
-        metrics = self._compute_metrics(predictions, targets)
+        objectives = FlatDict(self._compute_objectives(predictions, targets, scenarios))
+        metrics = FlatDict(self._compute_metrics(predictions, targets))
         loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
         if prefix == 'val':
             self._update_aggregated_metrics(predictions, targets)
@@ -130,17 +129,17 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         :param prefix: prefix prepended at each artifact's name
         :param loss_name: name given to the loss for logging
         """
-        self.log('idx', batch_idx, prog_bar=True)
-        self.log(f'loss/{prefix}_{loss_name}', loss)
+        self.log('idx', batch_idx, prog_bar=True, logger=True)
+        self.log(f'loss/{prefix}_{loss_name}', loss, prog_bar=True, logger=True, batch_size=self.batch_size)
 
         for key, value in objectives.items():
-            self.log(f'objectives/{prefix}_{key}', value)
+            self.log(f'objectives/{prefix}_{key}', value, logger=True, batch_size=self.batch_size)
 
         for key, value in metrics.items():
-            self.log(f'metrics/{prefix}_{key}', value)
+            self.log(f'metrics/{prefix}_{key}', value, logger=True, batch_size=self.batch_size)
 
         for key, value in kwargs.items():
-            self.log(f'{key}', value)
+            self.log(f'{key}', value, logger=True, batch_size=self.batch_size)
 
     def training_step(self, batch: Tuple[FeaturesType, TargetsType], batch_idx: int) -> torch.Tensor:
         """
@@ -177,8 +176,8 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
     def on_epoch_start(self) -> None:
         # Ensures all CUDA tensors are recycled
         if self._token2state is not None:
-            logger.info("Resetting _token2state before epoch starts.")
+            logger.debug("Resetting _token2state before epoch starts.")
             self._token2state.clear()
         if self._token2cache is not None:
-            logger.info("Resetting _token2cache before epoch starts.")
+            logger.debug("Resetting _token2cache before epoch starts.")
             self._token2cache.clear()

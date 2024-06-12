@@ -6,6 +6,7 @@ import numpy.typing as npt
 import pytorch_lightning as pl
 import torch
 import torch.utils.data
+from pytorch_lightning.loggers.logger import Logger
 
 from nuplan.planning.training.callbacks.utils.visualization_utils import (
     get_raster_from_vector_map_with_agents,
@@ -93,7 +94,7 @@ class VisualizationCallback(pl.Callback):
 
     def _log_batch(
         self,
-        loggers: List[Any],
+        logger: Logger,
         features: FeaturesType,
         targets: TargetsType,
         predictions: TargetsType,
@@ -104,7 +105,7 @@ class VisualizationCallback(pl.Callback):
         """
         Visualizes and logs a batch of data (features, targets, predictions) from the model.
 
-        :param loggers: list of loggers from the trainer
+        :param logger: logger object
         :param features: tensor of model features
         :param targets: tensor of model targets
         :param predictions: tensor of model predictions
@@ -126,14 +127,13 @@ class VisualizationCallback(pl.Callback):
 
         tag = f'{prefix}_visualization_{batch_idx}'
 
-        for logger in loggers:
-            if isinstance(logger, torch.utils.tensorboard.writer.SummaryWriter):
-                logger.add_images(
-                    tag=tag,
-                    img_tensor=torch.from_numpy(image_batch),
-                    global_step=training_step,
-                    dataformats='NHWC',
-                )
+        if isinstance(logger, torch.utils.tensorboard.writer.SummaryWriter):
+            logger.add_images(
+                tag=tag,
+                img_tensor=torch.from_numpy(image_batch),
+                global_step=training_step,
+                dataformats='NHWC',
+            )
 
     def _get_images_from_raster_features(
         self, features: FeaturesType, targets: TargetsType, predictions: TargetsType
@@ -231,7 +231,7 @@ class VisualizationCallback(pl.Callback):
         self._log_from_dataloader(
             pl_module,
             self.train_dataloader,
-            trainer.logger.experiment,
+            trainer.logger,
             trainer.global_step,
             'train',
         )
@@ -257,7 +257,7 @@ class VisualizationCallback(pl.Callback):
         self._log_from_dataloader(
             pl_module,
             self.val_dataloader,
-            trainer.logger.experiment,
+            trainer.logger,
             trainer.global_step,
             'val',
         )

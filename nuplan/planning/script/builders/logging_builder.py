@@ -134,8 +134,7 @@ def build_logger(cfg: DictConfig) -> logging.Logger:
     logger = configure_logger(handler_configs, format_str=format_string)
 
     # Disable logger if it's not main process. This is useful when the trainer uses multiple processes in the DDP mode.
-    if cfg.gpu:
-        logger.disabled = int(os.environ.get('LOCAL_RANK', 0)) != 0
+    logger.disabled = int(os.environ.get('LOCAL_RANK', 0)) != 0
 
     logger.setLevel(level=LOGGING_LEVEL_MAP[cfg.logger_level])
 

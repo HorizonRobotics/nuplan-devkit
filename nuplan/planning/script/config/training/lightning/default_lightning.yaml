@@ -11,42 +11,56 @@ trainer:
     mode: min  # minimize/maximize metric
 
   params:
-    max_time: 00:16:00:00  # training time before the process is terminated
+    # Device-wise setup
+    accelerator: gpu  # can be cpu, gpu, tpu, ipu, auto
+    strategy: ddp  # training strategies. ddp is enough for most situations.
+    devices: auto  # number of devices to train on, example: 8, [1, 3], "auto".
+    num_nodes: 1  # number of nodes for training
+    
+    # Precision setup
+    # For precision, it supports the following:
+    # "16-mixed": half mixed precision
+    # "16"/"16-true"/16: true half precision
+    # "32"/"32-true"/32: float precision
+    # "64"/"64-true"/64: double precision
+    # "bf16-mxied": bfloat16 mixed precision, more numerical stability compared to 16
+    # "bf16-true": true bfloat16 precision
+    # "transformer-engine"/"transformer-engine-float16": fp8 precision using Transformer Engine
+    precision: 32
+    accumulate_grad_batches: 1  # accumulates gradients every n batches
+    gradient_clip_val: 0.0  # value to clip gradients
+    gradient_clip_algorithm: norm  # [value, norm] method to clip gradients
+    
+    # Logging setup
+    logger: true  # use the TensorBoardLogger, or pass in a another logger object
+    log_every_n_steps: 50  # how often to log within steps
 
-    max_epochs: 20  # maximum number of training epochs
+    # Callbacks and plugins setup
+    callbacks: null  # a dictionary of callbacks to use
+    plugins: null  # a dictionary of plugins to use. Normally set to null.
+
+    # Training duration setup
+    fast_dev_run: false  # runs 1 batch of train/val/test for sanity
     check_val_every_n_epoch: 1  # run validation set every n training epochs
-    val_check_interval: 1.0  # [%] run validation set every X% of training set
-
+    num_sanity_val_steps: 0  # number of validation steps to run before training begins
     limit_train_batches: 1.0  # how much of training dataset to check (float = fraction, int = num_batches)
     limit_val_batches: 1.0  # how much of validation dataset to check (float = fraction, int = num_batches)
     limit_test_batches: 1.0  # how much of test dataset to check (float = fraction, int = num_batches)
+    max_time: 01:00:00:00  # training time before the process is terminated. 
+    max_epochs: -1  # maximum number of training epochs
+    max_steps: -1 # maximum number of training steps
 
-    gpus: -1  # number of GPUs to utilize (-1 means all available GPUs)
-    accelerator: ddp  # distribution method
-    precision: 16  # floating point precision
-    amp_level: O2 # AMP optimization level
-    num_nodes: 1  # Number of nodes used for training
+    # Debug behavior setup
+    profiler: null  # null, simple or advanced. Used to profile your entire training process
+    detect_anomaly: true  # enable anomaly detection for the autograd engine. Default: False.
+    barebones: false  # If true, will disable all kinds of logging/checkpointing/summarization/anomaly detection/sanity check to reduce all trainer overhead
 
-    auto_scale_batch_size: false
-    auto_lr_find: false  # tunes LR before beginning training
-    terminate_on_nan: true  # terminates training if a nan is encountered in loss/weights
-
-    num_sanity_val_steps: 0  # number of validation steps to run before training begins
-    fast_dev_run: false  # runs 1 batch of train/val/test for sanity
-
-    accumulate_grad_batches: 1  # accumulates gradients every n batches
-    track_grad_norm: -1  # logs the p-norm for inspection
-    gradient_clip_val: 0.0  # value to clip gradients
-    gradient_clip_algorithm: norm  # [value, norm] method to clip gradients
-
-    checkpoint_callback: true  # enable default checkpoint
-    replace_sampler_ddp: true  # set to false to add your own distributed sampler
+    # Other misc. setup
+    enable_checkpointing: true  # enable default checkpoint, which will save a checkpoint with the state of your late training epoch
+    enable_progress_bar: true  # enable progress bar in the terminal
+    enable_model_summary: true  # whether to enable model summarization
     sync_batchnorm: false  # enable synchronization between batchnorm layers across all GPUs
-    deterministic: false  # If true enables cudnn.deterministic. Might make your system slower, but ensures reproducibility
-
-  overfitting:
-    enable: false  # run an overfitting test instead of training
-
-    params:
-      max_epochs: 150  # number of epochs to overfit the same batches
-      overfit_batches: 1  # number of batches to overfit
+    use_distributed_sampler: true  # whether to use a torch distributed sampler
+    inference_mode: true  # if true, will use torch.inference_mode()/torch.no_grad() during validation/test/prediction
+    deterministic: false  # if true enables cudnn.deterministic. Might make your system slower, but ensures reproducibility
+    benchmark: false  # cuDNN will select the fastest convolution algorithm based on your machine, in sacrifice to reproducibility. If deterministic=True, then this will default to False.
