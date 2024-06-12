@@ -212,10 +212,21 @@ class LightningModuleWrapper(pl.LightningModule):
         if self.optimizer is None:
             raise RuntimeError("To train, optimizer must not be None.")
 
+        backbone_params = []
+        other_params = []
+        for name, param in self.named_parameters():
+            if 'img_backbone' in name:
+                backbone_params.append(param)
+            else:
+                other_params.append(param)
+
         # Get optimizer
         optimizer: Optimizer = instantiate(
             config=self.optimizer,
-            params=self.parameters(),
+            params=[
+                {"params": backbone_params, "lr": self.optimizer.lr * 0.5},
+                {"params": other_params}
+            ],
             lr=self.optimizer.lr,  # Use lr found from lr finder; otherwise use optimizer config
         )
         # Log the optimizer used
@@ -236,3 +247,6 @@ class LightningModuleWrapper(pl.LightningModule):
             optimizer_dict['lr_scheduler'] = lr_scheduler_params
 
         return optimizer_dict if 'lr_scheduler' in optimizer_dict else optimizer_dict['optimizer']
+
+    def log_grad_norm(self, grad_norm_dict: Dict[str, float]) -> None:
+        self.log_dict(grad_norm_dict, batch_size=8)

@@ -10,7 +10,43 @@ from nuplan.planning.training.preprocessing.feature_preprocessor import FeatureP
 
 logger = logging.getLogger(__name__)
 
+def decorate_for_sparse4d(dataset_cls):
+    original_init = dataset_cls.__init__
 
+    def new_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self.flag = self._feature_preprocessor.feature_builders[0].flag
+        self.keep_consistent_seq_aug = self._feature_preprocessor.feature_builders[0].keep_consistent_seq_aug
+        self.get_augmentation = self._feature_preprocessor.feature_builders[0].get_augmentation
+
+    def new__getitem__(self, idx):
+        # Copied from nuscenes_3d_dataset
+        if isinstance(idx, dict):
+            aug_config = idx["aug_config"]
+            idx = idx["idx"]
+        else:
+            aug_config = self.get_augmentation()
+        scenario = self._scenarios[idx]
+
+        features, targets, _ = self._feature_preprocessor.compute_features((scenario, aug_config))
+
+        if self._augmentors is not None:
+            for augmentor in self._augmentors:
+                augmentor.validate(features, targets)
+                features, targets = augmentor.augment(features, targets, scenario)
+
+        features = {key: value.to_feature_tensor() for key, value in features.items()}
+        targets = {key: value.to_feature_tensor() for key, value in targets.items()}
+        scenarios = [scenario]
+
+        return features, targets, scenarios        
+    
+    dataset_cls.__init__ = new_init
+    dataset_cls.__getitem__ = new__getitem__
+
+    return dataset_cls
+
+@decorate_for_sparse4d
 class ScenarioDataset(torch.utils.data.Dataset):
     """
     Dataset responsible for consuming scenarios and producing pairs of model inputs/outputs.

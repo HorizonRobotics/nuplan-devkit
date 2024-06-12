@@ -7,6 +7,8 @@ import torch
 import torch.utils.data
 from omegaconf import DictConfig
 from torch.utils.data.sampler import WeightedRandomSampler
+from hydra.utils import instantiate
+import numpy as np
 
 from nuplan.planning.scenario_builder.abstract_scenario import AbstractScenario
 from nuplan.planning.training.data_augmentation.abstract_data_augmentation import AbstractAugmentor
@@ -44,8 +46,9 @@ def create_dataset(
     :return: The instantiated torch dataset.
     """
     # Sample the desired fraction from the total samples
-    num_keep = int(len(samples) * dataset_fraction)
-    selected_scenarios = random.sample(samples, num_keep)
+    # num_keep = int(len(samples) * dataset_fraction)
+    # selected_scenarios = random.sample(samples, num_keep)
+    selected_scenarios = samples
     
     # manually duplicate scenarios if there is only one scenario(for DDP)
     # if len(selected_scenarios) == 1:
@@ -105,6 +108,12 @@ def distributed_weighted_sampler_init(
     distributed_weighted_sampler = DistributedSamplerWrapper(weighted_sampler)
     return distributed_weighted_sampler
 
+def worker_init_fn(worker_id, num_workers, rank, seed):
+    # The seed of each worker equals to
+    # num_worker * rank + worker_id + user_seed
+    worker_seed = num_workers * rank + worker_id + seed
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 class DataModule(pl.LightningDataModule):
     """
@@ -280,11 +289,24 @@ class DataModule(pl.LightningDataModule):
                 collate_fn=FeatureCollate(),
             )
         else:
+            # Jingyu: Adapt to Sparse4D batch sampler
+            if "batch_sampler" in self._dataloader_params:
+                batch_sampler = instantiate(
+                    config=self._dataloader_params.batch_sampler,
+                    dataset=self._train_set,
+                )
+                self._dataloader_params.batch_size = 1
+                self._dataloader_params.sampler = None
+                del self._dataloader_params.batch_sampler
+                if not hasattr(batch_sampler, "drop_last"):
+                    batch_sampler.drop_last = False
+            else:
+                batch_sampler = None
+
             return torch.utils.data.DataLoader(
                 dataset=self._train_set,
-                shuffle=weighted_sampler is None, 
+                batch_sampler=batch_sampler,
                 collate_fn=FeatureCollate(),
-                sampler=weighted_sampler,
                 **self._dataloader_params,
             )
 

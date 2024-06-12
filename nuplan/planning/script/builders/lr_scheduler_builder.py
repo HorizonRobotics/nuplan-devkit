@@ -129,9 +129,9 @@ def _instantiate_warm_up_lr_scheduler(
     if using_main_lr_scheduler:  # if using another scheduler as the main scheduler
 
         warm_up_lr_scheduler = instantiate(
-            config=warm_up_lr_scheduler_cfg,
+            config=warm_up_lr_scheduler_cfg.scheduler,
             optimizer=optimizer,
-            lr_lambda=instantiate(config=warm_up_lr_scheduler_cfg.lr_lambda, final_div_factor=1.0),
+            # lr_lambda=instantiate(config=warm_up_lr_scheduler_cfg.lr_lambda, final_div_factor=1.0),
         )
 
         lr_schedulers = [warm_up_lr_scheduler, lr_scheduler_params['scheduler']]
@@ -141,13 +141,13 @@ def _instantiate_warm_up_lr_scheduler(
         sequential_lr_scheduler = SequentialLR(
             optimizer=optimizer,
             schedulers=lr_schedulers,
-            milestones=[warm_up_lr_scheduler_cfg.lr_lambda.warm_up_steps],
+            milestones=[warm_up_lr_scheduler_cfg.milestone],
         )
 
         lr_scheduler_params['scheduler'] = sequential_lr_scheduler
-        logger.info(
-            f'Added Warm up learning rate scheduler before main scheduler with {warm_up_lr_scheduler_cfg.lr_lambda.warm_up_strategy} strategy.'
-        )
+        # logger.info(
+            # f'Added Warm up learning rate scheduler before main scheduler with {warm_up_lr_scheduler_cfg.lr_lambda.warm_up_strategy} strategy.'
+        # )
 
     else:  # No main learning rate scheduler is used. Only a warm up learning rate scheduler is specified.
         warm_up_lr_scheduler = instantiate(
@@ -170,6 +170,7 @@ def _instantiate_warm_up_lr_scheduler(
             f'Using Warm up learning rate scheduler with {warm_up_lr_scheduler_cfg.lr_lambda.warm_up_strategy} strategy.'
         )
 
+    lr_scheduler_params['interval'] = 'step'
     return lr_scheduler_params
 
 
