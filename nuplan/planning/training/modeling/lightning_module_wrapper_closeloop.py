@@ -1,8 +1,12 @@
-import copy
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
+from flatdict import FlatDict
+from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
+    AbstractTrainingController
+from nuplan_extent.planning.training.modeling.sequential_utilities.feature_cache import \
+    FeatureCacheContainer
 from omegaconf import DictConfig
 from torchmetrics import Metric
 
@@ -18,9 +22,6 @@ from nuplan.planning.training.modeling.types import (FeaturesType,
                                                      ScenarioListType,
                                                      TargetsType)
 
-from nuplan_extent.planning.training.modeling.sequential_utilities.feature_cache import FeatureCacheContainer
-from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
-    AbstractTrainingController
 from .lightning_module_wrapper import LightningModuleWrapper
 
 logger = logging.getLogger(__name__)
@@ -89,8 +90,8 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         features, targets, scenarios = batch
 
         predictions = self.forward(features)
-        objectives = self._compute_objectives(predictions, targets, scenarios)
-        metrics = self._compute_metrics(predictions, targets)
+        objectives = FlatDict(self._compute_objectives(predictions, targets, scenarios))
+        metrics = FlatDict(self._compute_metrics(predictions, targets))
         loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
         if prefix == 'val':
             self._update_aggregated_metrics(predictions, targets)

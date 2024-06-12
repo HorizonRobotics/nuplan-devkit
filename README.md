@@ -56,6 +56,27 @@ checkpoint:                                 # Specify your training pre-train ch
 
 Whether you want to resume training or use pre-trained weights and start new training, they will be better handled here.
 
+### Nested objective and metric
+
+Objectives and metrics are now wrapped by a `FlatDict` object which flattens nested dictionaries. This means you can define objective or metric classes that 
+returns multiple values, not just a single one.
+
+Example:
+
+```python
+class MyObjective(AbstractObjective):
+    ...
+    @property
+    def name(self):
+        return "my_objective"
+
+    def compute(self, predictions: FeaturesType, targets: TargetsType, scenarios: ScenarioListType) -> torch.Tensor:
+        ...
+        return {"safety_loss": loss_safety, "comfort_loss": {"longitudinal": comfort_long, "lateral": comfort_lat}}
+
+# In Tensorboard, they will be logged as "my_objective.safety_loss", "my_objective.comfort_loss.longitudinal" and "my_objective.comfort_loss.lateral"
+```
+
 ## Latest Updates (2024.06)
 
 * Upgraded pytorch-lightning to 2.2.5, with code changes that supports the following:
@@ -66,3 +87,4 @@ Whether you want to resume training or use pre-trained weights and start new tra
 * Added support for conditional yaml formatting.
 * Added `scenario_pickle_path` to `NuPlanScenarioBuilder` class.
 * Put all requirements into one single requirements.txt. Note that PyTorch is not specified here.
+* Added `FlatDict` to resolve nested metrics and objectives.
