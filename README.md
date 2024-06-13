@@ -1,8 +1,15 @@
-# The NuPlan 1.?
+# The NuPlan 1.3
 
-This is a custom-maintained version of the NuPlan. We make some changes based on the official NuPlan-devkit and make it easier for R&D purposes.
+This is a custom-maintained version of the NuPlan, which we term version 1.3. We make some changes based on the official NuPlan-devkit v1.2 and make it easier for R&D purposes.
 
 ## New Features
+
+### On-device model initialization
+
+Traditionally, the model is initialized on CPU and then transfered to GPU. With the latest lightning features, models can be directly initialized on GPU. The speed-up is significant if the model is very large. As a user you do not need to do anything.
+
+**NOTE:** when loading a checkpoint, if the weights stored in the checkpoint has a different device from the one the model is initialized on, it may raise an error. If such case, you may disable the
+`with trainer.init_module()` context manager inside the `build_training_engine` method in `nuplan/planning/training/experiments/training.py`
 
 ### Conditional yaml formatting
 
@@ -88,3 +95,4 @@ class MyObjective(AbstractObjective):
 * Added `scenario_pickle_path` to `NuPlanScenarioBuilder` class.
 * Put all requirements into one single requirements.txt. Note that PyTorch is not specified here.
 * Added `FlatDict` to resolve nested metrics and objectives.
+* Feature builder and target builder have an additional `iteration: int = 0` argument for `get_features_from_scenario`/`get_targets` methods. This is to support sequential data.
