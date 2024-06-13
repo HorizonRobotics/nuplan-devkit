@@ -17,7 +17,6 @@ cpplint
 pytorch-lightning==2.2.5
 timm
 torchmetrics
-# antlr==4.10
 aioboto3
 aiofiles
 boto3==1.24.59  # Used in s3_store.py to download data from S3.
