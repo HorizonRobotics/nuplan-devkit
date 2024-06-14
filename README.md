@@ -84,6 +84,21 @@ class MyObjective(AbstractObjective):
 # In Tensorboard, they will be logged as "my_objective.safety_loss", "my_objective.comfort_loss.longitudinal" and "my_objective.comfort_loss.lateral"
 ```
 
+## Compatibility 
+
+### 1. Upgrade old checkpoints
+
+To upgrade your old checkpoints to lightning v2.2.5, please run:
+`python -m pytorch_lightning.utilities.upgrade_checkpoint YOUR_CHECKPOINT_PATH`.
+
+If an error raises and says `KeyError: 'pytorch-lightning_version'`, it means your checkpoint is lacking a version number. In this case, follow the following code:
+
+```python
+import torch
+ckpt = torch.load(MY_CKPT_PATH)
+ckpt['pytorch-lightning_version'] = '1.3.8' # or other version such as '1.6.5'
+torch.save(MY_CKPT_PATH, ckpt)
+```
 ## Latest Updates (2024.06)
 
 * Upgraded pytorch-lightning to 2.2.5, with code changes that supports the following:
