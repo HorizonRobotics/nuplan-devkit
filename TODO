@@ -7,3 +7,5 @@ callbacks:
 [wont do] hydra env_set: https://hydra.cc/docs/1.1/configure_hydra/job/#hydrajobenv_set
 [failed] hydra color log: https://hydra.cc/docs/1.1/plugins/colorlog/
 [done] load a packed scenario pickle file directly in scenario builder
+documentation on val_augmentors 
+documentation on aggregated_metrics
