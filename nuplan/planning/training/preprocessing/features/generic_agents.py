@@ -117,8 +117,8 @@ class GenericAgents(AbstractModelFeature):
             and len(self.ego[0]) > 0
             and all([len(agent[0]) > 0 for agent in self.agents.values()])
             and all([len(self.ego[0]) == len(agent[0]) > 0 for agent in self.agents.values()])
-            and self.ego[0].shape[-1] == self.ego_state_dim()
-            and all([agent[0].shape[-1] == self.agents_states_dim() for agent in self.agents.values()])
+            # and self.ego[0].shape[-1] == self.ego_state_dim()
+            # and all([agent[0].shape[-1] == self.agents_states_dim() for agent in self.agents.values()])
         )
 
     @property

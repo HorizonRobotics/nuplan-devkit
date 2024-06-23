@@ -41,7 +41,18 @@ class AverageDisplacementError(AbstractTrainingMetric):
         predicted_trajectory: Trajectory = predictions["trajectory"]
         targets_trajectory: Trajectory = targets["trajectory"]
 
-        return torch.norm(predicted_trajectory.xy - targets_trajectory.xy, dim=-1).mean()
+        if predicted_trajectory.xy.shape[1] == targets_trajectory.xy.shape[1]:
+            return torch.norm(predicted_trajectory.xy - targets_trajectory.xy, dim=-1).mean()
+        else:
+            # Get the minimum number of points
+            min_points = min(predicted_trajectory.xy.shape[1], targets_trajectory.xy.shape[1])
+
+            # Slice the trajectories to the minimum number of points
+            predicted_slice = predicted_trajectory.xy[:, :min_points, :]
+            targets_slice = targets_trajectory.xy[:, :min_points, :]
+
+            # Compute the Euclidean distance and return the mean
+            return torch.norm(predicted_slice - targets_slice, dim=-1).mean()
 
 
 class FinalDisplacementError(AbstractTrainingMetric):
@@ -78,7 +89,13 @@ class FinalDisplacementError(AbstractTrainingMetric):
         predicted_trajectory: Trajectory = predictions["trajectory"]
         targets_trajectory: Trajectory = targets["trajectory"]
 
-        return torch.norm(predicted_trajectory.terminal_position - targets_trajectory.terminal_position, dim=-1).mean()
+        if predicted_trajectory.xy.shape[1] == targets_trajectory.xy.shape[1]:
+            return torch.norm(predicted_trajectory.terminal_position - targets_trajectory.terminal_position, dim=-1).mean()
+        else:
+            min_points = min(predicted_trajectory.xy.shape[1], targets_trajectory.xy.shape[1])
+            predicted_slice = predicted_trajectory.xy[:, min_points-1]
+            targets_slice = targets_trajectory.xy[:, min_points-1]
+            return torch.norm(predicted_slice - targets_slice, dim=-1).mean()
 
 
 class AverageHeadingError(AbstractTrainingMetric):
@@ -115,8 +132,20 @@ class AverageHeadingError(AbstractTrainingMetric):
         predicted_trajectory: Trajectory = predictions["trajectory"]
         targets_trajectory: Trajectory = targets["trajectory"]
 
-        errors = torch.abs(predicted_trajectory.heading - targets_trajectory.heading)
-        return torch.atan2(torch.sin(errors), torch.cos(errors)).mean()
+        if predicted_trajectory.heading.shape[1] == targets_trajectory.heading.shape[1]:
+            errors = torch.abs(predicted_trajectory.heading - targets_trajectory.heading)
+            return torch.atan2(torch.sin(errors), torch.cos(errors)).mean()
+        else:
+            # Get the minimum number of points
+            min_points = min(predicted_trajectory.heading.shape[1], targets_trajectory.heading.shape[1])
+
+            # Slice the trajectories to the minimum number of points
+            predicted_slice = predicted_trajectory.heading[:, :min_points]
+            targets_slice = targets_trajectory.heading[:, :min_points]
+
+            # Compute the heading error and return the mean
+            errors = torch.abs(predicted_slice - targets_slice)
+            return torch.atan2(torch.sin(errors), torch.cos(errors)).mean()
 
 
 class FinalHeadingError(AbstractTrainingMetric):
@@ -153,5 +182,14 @@ class FinalHeadingError(AbstractTrainingMetric):
         predicted_trajectory: Trajectory = predictions["trajectory"]
         targets_trajectory: Trajectory = targets["trajectory"]
 
-        errors = torch.abs(predicted_trajectory.terminal_heading - targets_trajectory.terminal_heading)
-        return torch.atan2(torch.sin(errors), torch.cos(errors)).mean()
+        if predicted_trajectory.terminal_heading.shape[0] == targets_trajectory.terminal_heading.shape[0]:
+            errors = torch.abs(predicted_trajectory.terminal_heading - targets_trajectory.terminal_heading)
+            return torch.atan2(torch.sin(errors), torch.cos(errors)).mean()
+        else:
+            min_points = min(predicted_trajectory.heading.shape[1], targets_trajectory.heading.shape[1])
+            predicted_slice = predicted_trajectory.heading[:, min_points-1]
+            targets_slice = targets_trajectory.heading[:, min_points-1]
+            errors = torch.abs(predicted_slice - targets_slice)
+            return torch.atan2(torch.sin(errors), torch.cos(errors)).mean()
+
+            

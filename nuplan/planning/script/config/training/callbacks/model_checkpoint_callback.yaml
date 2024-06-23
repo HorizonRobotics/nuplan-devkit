@@ -3,7 +3,7 @@ model_checkpoint_callback:
   _convert_: 'all'
 
   save_last: false
-  dirpath: ${output_dir}/best_model
+  dirpath: ${output_dir}/models
 
   # see default_lightning.yaml
   save_top_k: ${lightning.trainer.checkpoint.save_top_k}
