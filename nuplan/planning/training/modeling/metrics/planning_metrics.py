@@ -93,8 +93,8 @@ class FinalDisplacementError(AbstractTrainingMetric):
             return torch.norm(predicted_trajectory.terminal_position - targets_trajectory.terminal_position, dim=-1).mean()
         else:
             min_points = min(predicted_trajectory.xy.shape[1], targets_trajectory.xy.shape[1])
-            predicted_slice = predicted_trajectory.xy[:, min_points-1]
-            targets_slice = targets_trajectory.xy[:, min_points-1]
+            predicted_slice = predicted_trajectory.xy[:, min_points-1, :]
+            targets_slice = targets_trajectory.xy[:, min_points-1, :]
             return torch.norm(predicted_slice - targets_slice, dim=-1).mean()
 
 
@@ -182,7 +182,7 @@ class FinalHeadingError(AbstractTrainingMetric):
         predicted_trajectory: Trajectory = predictions["trajectory"]
         targets_trajectory: Trajectory = targets["trajectory"]
 
-        if predicted_trajectory.terminal_heading.shape[0] == targets_trajectory.terminal_heading.shape[0]:
+        if predicted_trajectory.heading.shape[1] == targets_trajectory.heading.shape[1]:
             errors = torch.abs(predicted_trajectory.terminal_heading - targets_trajectory.terminal_heading)
             return torch.atan2(torch.sin(errors), torch.cos(errors)).mean()
         else:
