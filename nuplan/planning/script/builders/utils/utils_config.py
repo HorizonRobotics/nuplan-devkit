@@ -33,7 +33,7 @@ def update_config_for_training(cfg: DictConfig) -> None:
                 rmtree(cfg.cache.cache_path)
 
             Path(cfg.cache.cache_path).mkdir(parents=True, exist_ok=True)
-
+    
     # Save all interpolations and remove keys that were only used for interpolation and have no further use.
     OmegaConf.resolve(cfg)
 

@@ -3,10 +3,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from flatdict import FlatDict
-from nuplan_extent.planning.training.closed_loop.controllers.abstract_training_controller import \
-    AbstractTrainingController
-from nuplan_extent.planning.training.modeling.sequential_utilities.feature_cache import \
-    FeatureCacheContainer
 from omegaconf import DictConfig
 from torchmetrics import Metric
 
@@ -72,10 +68,10 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         self.batch_size = batch_size
 
         # closed loop essentials
-        self._token2state: Dict[str, AbstractTrainingController] = {}  # State memory for every scenario
+        self._token2state: Dict = {}  # State memory for every scenario
 
         # sequential model essentials
-        self._token2cache: Dict[str, FeatureCacheContainer] = {}
+        self._token2cache: Dict = {}
 
     def _step(self, batch: Tuple[FeaturesType, TargetsType], prefix: str, batch_idx: int) -> Dict[str, Any]:
         """
@@ -93,7 +89,7 @@ class LightningModuleWrapperCloseloop(LightningModuleWrapper):
         objectives = FlatDict(self._compute_objectives(predictions, targets, scenarios))
         metrics = FlatDict(self._compute_metrics(predictions, targets))
         loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
-        if prefix == 'val':
+        if prefix == 'val' or prefix == 'test':
             self._update_aggregated_metrics(predictions, targets)
 
         self._log_step(loss, objectives, metrics, prefix, batch_idx=batch_idx)

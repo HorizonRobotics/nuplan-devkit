@@ -114,16 +114,16 @@ def get_local_scenario_cache(cache_path: str, feature_names: Optional[Set[str]],
         else:
             candidate_scenario_dirs = list(set([Path(i).parent for i in csv['file_name'].tolist()]))
     else:
-        candidate_scenario_dirs = [path for log_dir in cache_dir.iterdir() for type_dir in log_dir.iterdir() for path in type_dir.iterdir()]
+            candidate_scenario_dirs = [path for log_dir in cache_dir.iterdir() if log_dir.is_dir() for type_dir in log_dir.iterdir() if type_dir.is_dir() for path in type_dir.iterdir() if path.is_dir()]
 
     # Keep only dir paths that contains all required feature names
-    if feature_names is not None:
-        logger.info("Validate candidate scenarios...")
-        logger.info(f"feautre_names : {feature_names}")
-        check_func = valid_check_sequential if is_sequential else valid_check
-        with Pool(os.cpu_count()) as p:
-            scenario_cache_dirs = [path for path in tqdm(p.imap(check_func, [(path, feature_names) for path in candidate_scenario_dirs]), total=len(candidate_scenario_dirs)) if path is not None]
-        logger.info(f"Found {len(scenario_cache_dirs)} scenarios in cache.")
+    # if feature_names is not None:
+    #     logger.info("Validate candidate scenarios...")
+    #     logger.info(f"feautre_names : {feature_names}")
+    #     check_func = valid_check_sequential if is_sequential else valid_check
+    #     with Pool(os.cpu_count()) as p:
+    #         scenario_cache_dirs = [path for path in tqdm(p.imap(check_func, [(path, feature_names) for path in candidate_scenario_dirs]), total=len(candidate_scenario_dirs)) if path is not None]
+    #     logger.info(f"Found {len(scenario_cache_dirs)} scenarios in cache.")
 
     return candidate_scenario_dirs
 
@@ -183,7 +183,6 @@ def extract_scenarios_from_cache(
         assert (
             len(scenario_cache_paths) > 0
         ), f"Zero scenario cache paths after filtering by desired scenario types: {cfg.scenario_filter.scenario_types}. Please check if the cache contains the desired scenario type."
-
     if cfg.data_loader.params.sequential_train:
         scenarios = worker_map(worker, create_closed_loop_scenario_from_paths, scenario_cache_paths)
     else:

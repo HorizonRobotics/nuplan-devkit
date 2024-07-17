@@ -25,6 +25,12 @@ def to_tensor(data: FeatureDataType) -> torch.Tensor:
         return data
     elif isinstance(data, np.ndarray):
         return torch.from_numpy(data)
+    elif isinstance(data, dict):
+        return data
+    elif isinstance(data, list):
+        for i, value in enumerate(data):
+            data[i] = to_tensor(value)
+        return data
     else:
         raise ValueError(f"Unknown type: {type(data)}")
 
