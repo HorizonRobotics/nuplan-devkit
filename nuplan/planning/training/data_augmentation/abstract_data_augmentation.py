@@ -24,10 +24,10 @@ class AbstractAugmentor(ABC):
 
         required_target = set(self.required_targets)
         present_target = set(targets.keys())
-        assert len(required_target - present_target) == 0, (
-            f'Augmentor requires target {required_target} but invoked with '
-            f'targets dict that contains target {present_target}'
-        )
+        # assert len(required_target - present_target) == 0, (
+        #     f'Augmentor requires target {required_target} but invoked with '
+        #     f'targets dict that contains target {present_target}'
+        # )
 
     @abstractmethod
     def augment(

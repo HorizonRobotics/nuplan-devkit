@@ -86,9 +86,8 @@ class LightningModuleWrapper(pl.LightningModule):
         objectives = self._compute_objectives(predictions, targets, scenarios)
         metrics = self._compute_metrics(predictions, targets)
         loss = aggregate_objectives(objectives, agg_mode=self.objective_aggregate_mode)
-        if prefix == 'val':
+        if prefix == 'val' or prefix == 'test':
             self._update_aggregated_metrics(predictions, targets)
-
         self._log_step(loss, objectives, metrics, prefix)
         return loss
     

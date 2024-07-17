@@ -214,6 +214,7 @@ class DataModule(pl.LightningDataModule):
             )
 
             # Validation Dataset
+            # val_samples = train_samples[:2]
             val_samples = self._splitter.get_val_samples(self._all_samples, self._worker)
             assert len(val_samples) > 0, 'Splitter returned no validation samples'
 

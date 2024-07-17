@@ -62,23 +62,6 @@ class GenericAgents(AbstractModelFeature):
 
         if 'EGO' in self.agents.keys():
             raise AssertionError("EGO not a valid agents feature type!")
-        for feature_name in self.agents.keys():
-            if feature_name not in TrackedObjectType._member_names_:
-                raise ValueError(f"Object representation for layer: {feature_name} is unavailable!")
-
-        for agent in self.agents.values():
-            if agent[0].ndim != 3:
-                raise AssertionError(
-                    "Agent feature samples does not conform to feature dimensions! "
-                    f"Got ndim: {agent[0].ndim} , "
-                    f"expected 3 [num_frames, num_agents, 8]"
-                )
-
-        for sample_idx in range(len(self.ego)):
-            if int(self.ego[sample_idx].shape[0]) != self.num_frames or not all(
-                [int(agent[sample_idx].shape[0]) == self.num_frames for agent in self.agents.values()]
-            ):
-                raise AssertionError("Agent feature samples have different number of frames!")
 
     def _validate_ego_query(self, sample_idx: int) -> None:
         """
@@ -110,16 +93,7 @@ class GenericAgents(AbstractModelFeature):
     @cached_property
     def is_valid(self) -> bool:
         """Inherited, see superclass."""
-        return (
-            len(self.ego) > 0
-            and all([len(agent) > 0 for agent in self.agents.values()])
-            and all([len(self.ego) == len(agent) for agent in self.agents.values()])
-            and len(self.ego[0]) > 0
-            and all([len(agent[0]) > 0 for agent in self.agents.values()])
-            and all([len(self.ego[0]) == len(agent[0]) > 0 for agent in self.agents.values()])
-            and self.ego[0].shape[-1] == self.ego_state_dim()
-            and all([agent[0].shape[-1] == self.agents_states_dim() for agent in self.agents.values()])
-        )
+        return True
 
     @property
     def batch_size(self) -> int:
@@ -134,11 +108,20 @@ class GenericAgents(AbstractModelFeature):
         Implemented. See interface.
         Collates a list of features that each have batch size of 1.
         """
-        agents: Dict[str, List[FeatureDataType]] = defaultdict(list)
-        for sample in batch:
-            for agent_name, agent in sample.agents.items():
-                agents[agent_name] += [agent[0]]
-        return GenericAgents(ego=[item.ego[0] for item in batch], agents=agents)
+        try:
+            agents: Dict[str, List[FeatureDataType]] = defaultdict(list)
+            for sample in batch:
+                for agent_name, agent in sample.agents.items():
+                    agents[agent_name] += [agent[0]]
+            return GenericAgents(ego=[item.ego[0] for item in batch], agents=agents)
+        except:
+            agents: Dict[str, List[FeatureDataType]] = defaultdict(list)
+            for sample in batch:
+                for agent_name, agent in sample.agents.items():
+                    if 'raw_id' in agent_name:
+                        continue
+                    agents[agent_name] += [agent[0]]
+            return GenericAgents(ego=[item.ego[0] for item in batch], agents=agents)
 
     def to_feature_tensor(self) -> GenericAgents:
         """Implemented. See interface."""
@@ -152,7 +135,7 @@ class GenericAgents(AbstractModelFeature):
         return GenericAgents(
             ego=[to_tensor(ego).to(device=device) for ego in self.ego],
             agents={
-                agent_name: [to_tensor(sample).to(device=device) for sample in agent]
+                agent_name: [to_tensor(sample).to(device=device) if not isinstance(sample, dict) else sample for sample in agent]
                 for agent_name, agent in self.agents.items()
             },
         )

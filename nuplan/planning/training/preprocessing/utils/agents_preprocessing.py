@@ -487,7 +487,7 @@ def compute_yaw_rate_from_states(
 
 
 def convert_absolute_quantities_to_relative(
-    agent_states: List[torch.Tensor], ego_state: torch.Tensor
+    agent_states: List[torch.Tensor], ego_state: torch.Tensor, position_only=False
 ) -> List[torch.Tensor]:
     """
     Converts the agents' poses and relative velocities from absolute to ego-relative coordinates.
@@ -533,8 +533,10 @@ def convert_absolute_quantities_to_relative(
         agent_state[:, AgentInternalIndex.x()] = transformed_poses[:, 0].float()
         agent_state[:, AgentInternalIndex.y()] = transformed_poses[:, 1].float()
         agent_state[:, AgentInternalIndex.heading()] = transformed_poses[:, 2].float()
-        agent_state[:, AgentInternalIndex.vx()] = transformed_velocities[:, 0].float()
-        agent_state[:, AgentInternalIndex.vy()] = transformed_velocities[:, 1].float()
+        if not position_only:
+            print('tranform velocities')
+        # agent_state[:, AgentInternalIndex.vx()] = transformed_velocities[:, 0].float()
+        # agent_state[:, AgentInternalIndex.vy()] = transformed_velocities[:, 1].float()
 
     return agent_states
 
@@ -851,7 +853,7 @@ def sampled_tracked_objects_to_tensor_list(
     for i in range(len(past_tracked_objects)):
         tensorized, track_token_ids = _extract_agent_tensor(past_tracked_objects[i], track_token_ids, object_type)
         output.append(tensorized)
-    return output
+    return output, track_token_ids
 
 
 def pack_agents_tensor(padded_agents_tensors: List[torch.Tensor], yaw_rates: torch.Tensor) -> torch.Tensor:

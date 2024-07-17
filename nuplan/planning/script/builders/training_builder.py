@@ -108,7 +108,6 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
         params.update({"checkpoint_path": cfg.checkpoint.ckpt_path, "strict": cfg.checkpoint.strict})
     else:
         caller = LightningModuleWrapperCloseloop
-
     model = caller(**params)
 
     return cast(pl.LightningModule, model)
