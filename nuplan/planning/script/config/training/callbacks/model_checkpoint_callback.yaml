@@ -2,7 +2,7 @@ model_checkpoint_callback:
   _target_: nuplan.planning.training.callbacks.checkpoint_callback.ModelCheckpointAtEpochEnd
   _convert_: 'all'
 
-  save_last: false
+  save_last: true
   dirpath: ${output_dir}/best_model
 
   # see default_lightning.yaml

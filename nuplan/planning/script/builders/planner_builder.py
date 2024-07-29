@@ -1,5 +1,6 @@
 from typing import List, Optional, Type, cast
 
+import torch
 from hydra._internal.utils import _locate
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
@@ -23,9 +24,24 @@ def _build_planner(planner_cfg: DictConfig, scenario: Optional[AbstractScenario]
     if is_target_type(planner_cfg, MLPlanner):
         # Build model and feature builders needed to run an ML model in simulation
         torch_module_wrapper = build_torch_module_wrapper(planner_cfg.model_config)
-        model = LightningModuleWrapper.load_from_checkpoint(
-            planner_cfg.checkpoint_path, model=torch_module_wrapper
-        ).model
+        # Load the checkpoint
+        checkpoint = torch.load(planner_cfg.checkpoint_path)
+
+        # Extract the state dictionary
+        state_dict = checkpoint['state_dict'] if 'state_dict' in checkpoint else checkpoint
+
+        def parse_state_dict_key(state_dict):
+            new_state_dict = {}
+            for k,v in state_dict.items():
+                if 'model.' in k:
+                    new_state_dict[k[6:]] = v
+            return new_state_dict
+        state_dict = parse_state_dict_key(state_dict)
+        # Create the model instance
+        model = torch_module_wrapper
+
+        # Load the state dictionary into the model
+        model.load_state_dict(state_dict)
 
         # Remove config elements that are redundant to MLPlanner
         OmegaConf.set_struct(config, False)
@@ -48,7 +64,7 @@ def _build_planner(planner_cfg: DictConfig, scenario: Optional[AbstractScenario]
     return planner
 
 
-def build_planners(planner_cfg: DictConfig, scenario: Optional[AbstractScenario]) -> List[AbstractPlanner]:
+def build_planners(planner_cfg: DictConfig, scenario: Optional[AbstractScenario], cache=None) -> List[AbstractPlanner]:
     """
     Instantiate multiple planners by calling build_planner
     :param planners_cfg: planners config

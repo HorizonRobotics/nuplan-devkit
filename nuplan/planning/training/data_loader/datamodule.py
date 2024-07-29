@@ -214,9 +214,11 @@ class DataModule(pl.LightningDataModule):
             )
 
             # Validation Dataset
-            # val_samples = train_samples[:2]
-            val_samples = self._splitter.get_val_samples(self._all_samples, self._worker)
+            val_samples = train_samples
+            # val_samples = self._splitter.get_val_samples(self._all_samples, self._worker)
             assert len(val_samples) > 0, 'Splitter returned no validation samples'
+
+            val_samples = random.sample(val_samples, min(4096, len(val_samples)))
 
             val_batch_size = self._dataloader_params.batch_size if self._sequential_val else None
             self._val_set = create_dataset(

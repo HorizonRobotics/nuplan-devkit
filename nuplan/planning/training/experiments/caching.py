@@ -88,7 +88,7 @@ def cache_scenarios(args: List[Dict[str, Union[List[str], DictConfig]]]) -> List
             num_failures_cur_scenario = 0
             num_successes_cur_scenario = 0
 
-            for iteration in range(scenario.get_number_of_iterations()):
+            for iteration in range(1):
                 features, targets, file_cache_metadata = preprocessor.compute_features(scenario, iteration)
                 cur_scenario_fail = any([feature is None for feature in itertools.chain(features.values(), targets.values())])
                 if cur_scenario_fail:
