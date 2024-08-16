@@ -48,7 +48,7 @@ def build_lightning_datamodule(
         force_feature_computation=cfg.cache.force_feature_computation,
         feature_builders=feature_builders,
         target_builders=target_builders,
-        versatile_cache=cfg.cache.versatile_caching,
+        versatile_cache=cfg.cache.get("versatile_caching", False),
     )
 
     # Create data augmentation
@@ -90,35 +90,26 @@ def build_lightning_module(cfg: DictConfig, torch_module_wrapper: TorchModuleWra
     # Build aggregated metrics to evaluate the performance of predictions
     aggregated_metrics = build_aggregated_metrics(cfg) if "aggregated_metric" in cfg else {}
 
-    # Create the complete Module
-    if 'checkpoint' in cfg and cfg.checkpoint.ckpt_path is not None:
-        assert Path(cfg.checkpoint.ckpt_path).is_file()
-        logger.info(f"Loading checkpoint from {cfg.checkpoint.ckpt_path} with strict {cfg.checkpoint.strict}")
-        model = LightningModuleWrapperCloseloop.load_from_checkpoint(
-            cfg.checkpoint.ckpt_path,
-            model=torch_module_wrapper,
-            objectives=objectives,
-            metrics=metrics,
-            aggregated_metrics=aggregated_metrics,
-            batch_size=cfg.data_loader.params.batch_size,
-            optimizer=cfg.optimizer,
-            lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
-            warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
-            objective_aggregate_mode=cfg.objective_aggregate_mode,
-            strict=cfg.checkpoint.strict,
-        )
+    params = {
+        "model": torch_module_wrapper,
+        "objectives": objectives,
+        "metrics": metrics,
+        "aggregated_metrics": aggregated_metrics,
+        "batch_size": cfg.data_loader.params.batch_size,
+        "optimizer": cfg.optimizer,
+        "lr_scheduler": cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
+        "warm_up_lr_scheduler": cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
+        "objective_aggregate_mode": cfg.objective_aggregate_mode,
+    }
+
+    if cfg.checkpoint.ckpt_path is not None and not cfg.checkpoint.resume:
+        # If not resume training, checkpoint will be used as pre-train
+        caller = LightningModuleWrapperCloseloop.load_from_checkpoint
+        params.update({"checkpoint_path": cfg.checkpoint.ckpt_path, "strict": cfg.checkpoint.strict})
     else:
-        model = LightningModuleWrapperCloseloop(
-            model=torch_module_wrapper,
-            objectives=objectives,
-            metrics=metrics,
-            aggregated_metrics=aggregated_metrics,
-            batch_size=cfg.data_loader.params.batch_size,
-            optimizer=cfg.optimizer,
-            lr_scheduler=cfg.lr_scheduler if 'lr_scheduler' in cfg else None,
-            warm_up_lr_scheduler=cfg.warm_up_lr_scheduler if 'warm_up_lr_scheduler' in cfg else None,
-            objective_aggregate_mode=cfg.objective_aggregate_mode,
-        )
+        caller = LightningModuleWrapperCloseloop
+
+    model = caller(**params)
 
     return cast(pl.LightningModule, model)
 
@@ -132,57 +123,10 @@ def build_trainer(cfg: DictConfig) -> pl.Trainer:
     params = cfg.lightning.trainer.params
 
     callbacks = build_callbacks(cfg)
-
-    plugins = [
-        pl.plugins.DDPPlugin(find_unused_parameters=False, num_nodes=params.num_nodes),
-    ]
-
-    loggers = [
-        pl.loggers.TensorBoardLogger(
-            save_dir=cfg.group,
-            name=cfg.experiment,
-            log_graph=False,
-            version='',
-            prefix='',
-        ),
-    ]
-
-    if cfg.lightning.trainer.overfitting.enable:
-        OmegaConf.set_struct(cfg, False)
-        params = OmegaConf.merge(params, cfg.lightning.trainer.overfitting.params)
-        params.check_val_every_n_epoch = params.max_epochs + 1
-        OmegaConf.set_struct(cfg, True)
-
-        return pl.Trainer(plugins=plugins, **params)
-
-    if cfg.lightning.trainer.checkpoint.resume_training:
-        OmegaConf.set_struct(cfg, False)
-        if isinstance(cfg.lightning.trainer.checkpoint.resume_training, bool):
-            # Resume training from latest checkpoint
-            output_dir = Path(cfg.output_dir)
-            date_format = cfg.date_format
-
-            last_checkpoint = extract_last_checkpoint_from_experiment(output_dir, date_format)
-            if not last_checkpoint:
-                raise ValueError('Resume Training is enabled but no checkpoint was found!')
-
-            params.resume_from_checkpoint = str(last_checkpoint)
-            latest_epoch = torch.load(last_checkpoint)['epoch']
-            params.max_epochs += latest_epoch
-            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {last_checkpoint}')
-
-        else:
-            # Resume training from designated checkpoint
-            params.resume_from_checkpoint = str(cfg.lightning.trainer.checkpoint.resume_training)
-            latest_epoch = torch.load(params.resume_from_checkpoint)['epoch']
-            params.max_epochs += latest_epoch
-            logger.info(f'Resuming at epoch {latest_epoch} from checkpoint {params.resume_from_checkpoint}')
-        OmegaConf.set_struct(cfg, True)
+    del params.callbacks
 
     trainer = pl.Trainer(
         callbacks=callbacks,
-        plugins=plugins,
-        logger=loggers,
         **params,
     )
 

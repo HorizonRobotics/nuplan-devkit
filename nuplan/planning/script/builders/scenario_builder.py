@@ -151,7 +151,7 @@ def extract_scenarios_from_cache(
     else:
         feature_names = None
 
-    is_sequential = cfg.data_loader.params.sequential_train
+    is_sequential = cfg.data_loader.params.sequential_train or cfg.data_loader.params.sequential_val or cfg.data_loader.params.sequential_test
 
     # Get cached scenario paths locally or remotely
     scenario_cache_paths = (

@@ -1,10 +1,11 @@
 import logging
 import os
 from typing import Optional
+import colorlog
 
 import hydra
 import pytorch_lightning as pl
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from nuplan.planning.script.builders.folder_builder import build_training_experiment_folder
 from nuplan.planning.script.builders.logging_builder import build_logger
@@ -16,7 +17,7 @@ from nuplan.planning.training.experiments.caching import cache_data
 from nuplan.planning.training.experiments.training import TrainingEngine, build_training_engine
 
 logging.getLogger('numba').setLevel(logging.WARNING)
-logger = logging.getLogger(__name__)
+logger = colorlog.getLogger(__name__)
 
 # If set, use the env. variable to overwrite the default dataset and experiment paths
 set_default_path()
@@ -31,6 +32,8 @@ if os.path.basename(CONFIG_PATH) != 'training':
     CONFIG_PATH = os.path.join(CONFIG_PATH, 'training')
 CONFIG_NAME = 'default_training'
 
+# Add a new resolver that supports eval
+OmegaConf.register_new_resolver("eval", eval)
 
 @hydra.main(config_path=CONFIG_PATH, config_name=CONFIG_NAME)
 def main(cfg: DictConfig) -> Optional[TrainingEngine]:
@@ -61,7 +64,10 @@ def main(cfg: DictConfig) -> Optional[TrainingEngine]:
         # Run training
         logger.info('Starting training...')
         with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "training"):
-            engine.trainer.fit(model=engine.model, datamodule=engine.datamodule)
+            if cfg.checkpoint.ckpt_path is not None and cfg.checkpoint.resume:
+                engine.trainer.fit(model=engine.model, datamodule=engine.datamodule, ckpt_path=cfg.checkpoint.ckpt_path)
+            else:
+                engine.trainer.fit(model=engine.model, datamodule=engine.datamodule)
         return engine
     elif cfg.py_func == 'test':
         # Build training engine

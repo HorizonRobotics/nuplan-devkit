@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import pickle
 from functools import partial
 from typing import Any, List, Optional, Tuple, Type, Union, cast
 
@@ -48,6 +50,7 @@ class NuPlanScenarioBuilder(AbstractScenarioBuilder):
         verbose: bool = True,
         scenario_mapping: Optional[ScenarioMapping] = None,
         vehicle_parameters: Optional[VehicleParameters] = None,
+        scenario_pickle_path: Optional[str] = None,
     ):
         """
         Initialize scenario builder that filters and retrieves scenarios from the nuPlan dataset.
@@ -67,6 +70,8 @@ class NuPlanScenarioBuilder(AbstractScenarioBuilder):
         :param verbose: Whether to print progress and details during the database loading and scenario building.
         :param scenario_mapping: Mapping of scenario types to extraction information.
         :param vehicle_parameters: Vehicle parameters for this db.
+        :param scenario_pickle_path: an optional pickle file that contains a list of scenarios. If not None, this will
+                                     directly load scenarios from pickle instead of loading from dataset.
         """
         self._data_root = data_root
         self._map_root = map_root
@@ -78,6 +83,7 @@ class NuPlanScenarioBuilder(AbstractScenarioBuilder):
         self._verbose = verbose
         self._scenario_mapping = scenario_mapping if scenario_mapping is not None else ScenarioMapping({}, None)
         self._vehicle_parameters = vehicle_parameters if vehicle_parameters is not None else get_pacifica_parameters()
+        self._scenario_pickle_path = scenario_pickle_path
 
     def __reduce__(self) -> Tuple[Type[NuPlanScenarioBuilder], Tuple[Any, ...]]:
         """
@@ -94,6 +100,7 @@ class NuPlanScenarioBuilder(AbstractScenarioBuilder):
             self._verbose,
             self._scenario_mapping,
             self._vehicle_parameters,
+            self._scenario_pickle_path
         )
 
     @classmethod
@@ -251,6 +258,13 @@ class NuPlanScenarioBuilder(AbstractScenarioBuilder):
 
     def get_scenarios(self, scenario_filter: ScenarioFilter, worker: WorkerPool) -> List[AbstractScenario]:
         """Implemented. See interface."""
+        if self._scenario_pickle_path is not None and os.path.isfile(
+                self._scenario_pickle_path) and self._scenario_pickle_path.endswith(".pkl"):
+            logger.info(f'Loading scenarios from pickle file {self._scenario_pickle_path}')
+            with open(self._scenario_pickle_path, 'rb') as f:
+                scenario_list = pickle.load(f)
+            return scenario_list
+
         # Create scenario dictionary and series of filters to apply
         scenario_dict = self._create_scenarios(scenario_filter, worker)
         filter_wrappers = self._create_filter_wrappers(scenario_filter, worker)

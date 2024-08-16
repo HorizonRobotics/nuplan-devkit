@@ -86,7 +86,7 @@ class RasterFeatureBuilder(AbstractFeatureBuilder):
         """Inherited, see superclass."""
         return Raster  # type: ignore
 
-    def get_features_from_scenario(self, scenario: AbstractScenario) -> Raster:
+    def get_features_from_scenario(self, scenario: AbstractScenario, iteration: int=0) -> Raster:
         """Inherited, see superclass."""
         ego_state = scenario.initial_ego_state
         detections = scenario.initial_tracked_objects

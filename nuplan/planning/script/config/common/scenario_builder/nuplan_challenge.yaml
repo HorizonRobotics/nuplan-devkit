@@ -14,6 +14,8 @@ include_cameras: false # Include camera data in the scenarios.
 max_workers: null
 verbose: ${verbose}
 
+scenario_pickle_path: null # Load a list of scenarios from a pickle file directly
+
 defaults:
   - vehicle_parameters: nuplan_vehicle_parameters
   - scenario_mapping: nuplan_challenge_scenario_mapping

@@ -29,11 +29,12 @@ class AbstractTargetBuilder(ABC):
         pass
 
     @abstractmethod
-    def get_targets(self, scenario: AbstractScenario) -> AbstractModelFeature:
+    def get_targets(self, scenario: AbstractScenario, iteration: int = 0) -> AbstractModelFeature:
         """
         Constructs model output targets from database scenario.
 
         :param scenario: generic scenario
+        :param iteration: the iteration index, defaults to 0
         :return: constructed targets
         """
         pass

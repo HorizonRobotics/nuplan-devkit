@@ -67,7 +67,7 @@ def cache_scenarios(args: List[Dict[str, Union[List[str], DictConfig]]]) -> List
             force_feature_computation=cfg.cache.force_feature_computation,
             feature_builders=feature_builders,
             target_builders=target_builders,
-            versatile_cache=cfg.cache.versatile_caching,
+            versatile_cache=cfg.cache.get("versatile_caching", False),
         )
 
         logger.info("Extracted %s scenarios for thread_id=%s, node_id=%s.", str(len(scenarios)), thread_id, node_id)

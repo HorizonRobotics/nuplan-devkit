@@ -38,10 +38,11 @@ class AbstractFeatureBuilder(ABC):
         pass
 
     @abstractmethod
-    def get_features_from_scenario(self, scenario: AbstractScenario) -> AbstractModelFeature:
+    def get_features_from_scenario(self, scenario: AbstractScenario, iteration: int = 0) -> AbstractModelFeature:
         """
         Constructs model input features from a database samples.
         :param scenario: Generic scenario
+        :param iteration: the iteration index, defaults to 0
         :return: Constructed features
         """
         pass
