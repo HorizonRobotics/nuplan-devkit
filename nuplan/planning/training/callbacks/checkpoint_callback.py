@@ -27,6 +27,19 @@ class ModelCheckpointAtEpochEnd(pl.callbacks.ModelCheckpoint):
         """
         super().__init__(save_last=save_last, save_top_k=save_top_k, dirpath=dirpath, monitor=monitor, mode=mode)
 
+    """ Customized callback for saving Lightning checkpoint for every epoch. """
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        """
+        Customized callback function to save checkpoint every epoch.
+        :param trainer: Pytorch lightning trainer instance.
+        :param pl_module: LightningModule.
+        """
+        checkpoint_dir = Path(trainer.checkpoint_callback.dirpath).parent / 'checkpoints'
+        checkpoint_name = f'epoch={trainer.current_epoch}.ckpt'
+        checkpoint_path = checkpoint_dir / checkpoint_name
+        trainer.save_checkpoint(str(checkpoint_path))
+    
+    """ on_epoch_end may have been deprecated in the latest version of Pytorch Lightning """
     def on_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """
         Customized callback function to save checkpoint every epoch.
@@ -37,7 +50,6 @@ class ModelCheckpointAtEpochEnd(pl.callbacks.ModelCheckpoint):
         checkpoint_name = f'epoch={trainer.current_epoch}.ckpt'
         checkpoint_path = checkpoint_dir / checkpoint_name
         trainer.save_checkpoint(str(checkpoint_path))
-
 
 class EvaluationResumeCallback(pl.Callback):
     """Resumes evaluation at the specified epoch number."""
