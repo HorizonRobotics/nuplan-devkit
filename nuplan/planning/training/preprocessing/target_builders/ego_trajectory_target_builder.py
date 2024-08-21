@@ -44,6 +44,9 @@ class EgoTrajectoryTargetBuilder(AbstractTargetBuilder):
         )
 
         if len(trajectory_relative_poses) != self._num_future_poses:
-            raise RuntimeError(f'Expected {self._num_future_poses} num poses but got {len(trajectory_relative_poses)}')
+            # raise RuntimeError(f'Expected {self._num_future_poses} num poses but got {len(trajectory_relative_poses)}')
+            trajectory = Trajectory(data=trajectory_relative_poses)
+            trajectory.is_valid = False
+            return trajectory
 
         return Trajectory(data=trajectory_relative_poses)
