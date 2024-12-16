@@ -128,63 +128,171 @@ def cache_data(cfg: DictConfig, worker: WorkerPool) -> None:
     """
     assert cfg.cache.cache_path is not None, f"Cache path cannot be None when caching, got {cfg.cache.cache_path}"
 
-    # scenario_builder = build_scenario_builder(cfg)
-    # if int(os.environ.get("NUM_NODES", 1)) > 1 and cfg.distribute_by_scenario:
-    #     # Partition differently based on how the scenario builder loads the data
-    #     repartition_strategy = scenario_builder.repartition_strategy
-    #     if repartition_strategy == RepartitionStrategy.REPARTITION_FILE_DISK:
-    #         scenario_filter = DistributedScenarioFilter(
-    #             cfg=cfg,
-    #             worker=worker,
-    #             node_rank=int(os.environ.get("NODE_RANK", 0)),
-    #             num_nodes=int(os.environ.get("NUM_NODES", 1)),
-    #             synchronization_path=cfg.cache.cache_path,
-    #             timeout_seconds=cfg.get("distributed_timeout_seconds", 3600),
-    #             distributed_mode=cfg.get("distributed_mode", DistributedMode.LOG_FILE_BASED),
-    #         )
-    #         scenarios = scenario_filter.get_scenarios()
-    #     elif repartition_strategy == RepartitionStrategy.INLINE:
-    #         scenarios = build_scenarios_from_config(cfg, scenario_builder, worker)
-    #         num_nodes = int(os.environ.get("NUM_NODES", 1))
-    #         node_id = int(os.environ.get("NODE_RANK", 0))
-    #         scenarios = chunk_list(scenarios, num_nodes)[node_id]
-    #     else:
-    #         expected_repartition_strategies = [e.value for e in RepartitionStrategy]
-    #         raise ValueError(
-    #             f"Expected repartition strategy to be in {expected_repartition_strategies}, got {repartition_strategy}."
-    #         )
-    # else:
-    #     logger.debug(
-    #         "Building scenarios without distribution, if you're running on a multi-node system, make sure you aren't"
-    #         "accidentally caching each scenario multiple times!"
-    #     )
-    #     scenarios = build_scenarios_from_config(cfg, scenario_builder, worker)
-
-    import pickle
-    from pathlib import Path
-    from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_utils import ScenarioExtractionInfo
-    with open('/home/users/siqi01.chai/hoplan-alf/scenario_all_test_no_first.pkl', 'rb') as f:
-        # to fix a bug while reading csv, we use scenario_all_test_no_first instead of scenario_all_test
-        scenarios_all = pickle.load(f)
-    scenarios = []
-
-    for sid, s in enumerate(scenarios_all):
-        # scenario_model_path = '/mnt/nas20/siqi01.chai/train-scenes-300/train-scene-{}/model-new/checkpoints/PointTexture_stage_0_epoch_23.pth'
-        scenario_model_path = '/mnt/nas20/siqi01.chai/test-scenes/test-scene-{}/model-new/checkpoints/PointTexture_stage_0_epoch_23.pth'
-        scenario_model_path = Path(scenario_model_path.format(sid))
-        new_extraction_info = ScenarioExtractionInfo(
-            scenario_name=s._scenario_extraction_info.scenario_name,
-            scenario_duration=s._scenario_extraction_info.scenario_duration,
-            extraction_offset=s._scenario_extraction_info.extraction_offset,
-            subsample_ratio=1,
+    scenario_builder = build_scenario_builder(cfg)
+    if int(os.environ.get("NUM_NODES", 1)) > 1 and cfg.distribute_by_scenario:
+        # Partition differently based on how the scenario builder loads the data
+        repartition_strategy = scenario_builder.repartition_strategy
+        if repartition_strategy == RepartitionStrategy.REPARTITION_FILE_DISK:
+            scenario_filter = DistributedScenarioFilter(
+                cfg=cfg,
+                worker=worker,
+                node_rank=int(os.environ.get("NODE_RANK", 0)),
+                num_nodes=int(os.environ.get("NUM_NODES", 1)),
+                synchronization_path=cfg.cache.cache_path,
+                timeout_seconds=cfg.get("distributed_timeout_seconds", 3600),
+                distributed_mode=cfg.get("distributed_mode", DistributedMode.LOG_FILE_BASED),
             )
-        s._scenario_extraction_info = new_extraction_info
-        if scenario_model_path.is_file():
-            scenarios.append(s)
+            scenarios = scenario_filter.get_scenarios()
+        elif repartition_strategy == RepartitionStrategy.INLINE:
+            scenarios = build_scenarios_from_config(cfg, scenario_builder, worker)
+            num_nodes = int(os.environ.get("NUM_NODES", 1))
+            node_id = int(os.environ.get("NODE_RANK", 0))
+            scenarios = chunk_list(scenarios, num_nodes)[node_id]
+        else:
+            expected_repartition_strategies = [e.value for e in RepartitionStrategy]
+            raise ValueError(
+                f"Expected repartition strategy to be in {expected_repartition_strategies}, got {repartition_strategy}."
+            )
+    else:
+        logger.debug(
+            "Building scenarios without distribution, if you're running on a multi-node system, make sure you aren't"
+            "accidentally caching each scenario multiple times!"
+        )
+        scenarios = build_scenarios_from_config(cfg, scenario_builder, worker)
+
+    # nuplan_e2e_scenarios = []
+    # from nuplan_extent.planning.scenario_builder.nuplan_db.nuplan_e2e_scenario import NuPlanE2EScenario
+    # for s in scenarios:
+    #     e2e_s = NuPlanE2EScenario(
+    #         data_root=s._data_root,
+    #         log_file_load_path=s._log_file_load_path,
+    #         initial_lidar_token=s._initial_lidar_token,
+    #         initial_lidar_timestamp=s._initial_lidar_timestamp,
+    #         scenario_type=s._scenario_type,
+    #         map_root=s._map_root,
+    #         map_version=s._map_version,
+    #         map_name=s._map_name,
+    #         scenario_extraction_info=s._scenario_extraction_info,
+    #         ego_vehicle_parameters=s._ego_vehicle_parameters,
+    #         sensor_root=s._sensor_root,
+    #     )
+    #     if e2e_s._log_name == '2021.10.05.04.38.41_veh-50_00996_01109' and e2e_s.token == 'cc2f8b7da7685a63':
+    #         continue
+    #     nuplan_e2e_scenarios.append(e2e_s)
+    # scenarios = nuplan_e2e_scenarios
+    # '''
+    # Failed to compute features for scenario token cc2f8b7da7685a63 in log 2021.10.05.04.38.41_veh-50_00996_01109
+    # '''
+
+
+
+    # import pickle
+    # from pathlib import Path
+    # from nuplan.planning.scenario_builder.nuplan_db.nuplan_scenario_utils import ScenarioExtractionInfo
+    # with open('/home/users/siqi01.chai/hoplan-alf/scenario_all_test_no_first.pkl', 'rb') as f:
+    #     # to fix a bug while reading csv, we use scenario_all_test_no_first instead of scenario_all_test
+    #     scenarios_all = pickle.load(f)
+    # scenarios = []
+
+    # for sid, s in enumerate(scenarios_all):
+    #     # scenario_model_path = '/mnt/nas20/siqi01.chai/train-scenes-300/train-scene-{}/model-new/checkpoints/PointTexture_stage_0_epoch_23.pth'
+    #     scenario_model_path = '/mnt/nas20/siqi01.chai/test-scenes/test-scene-{}/model-new/checkpoints/PointTexture_stage_0_epoch_23.pth'
+    #     scenario_model_path = Path(scenario_model_path.format(sid))
+    #     new_extraction_info = ScenarioExtractionInfo(
+    #         scenario_name=s._scenario_extraction_info.scenario_name,
+    #         scenario_duration=s._scenario_extraction_info.scenario_duration,
+    #         extraction_offset=s._scenario_extraction_info.extraction_offset,
+    #         subsample_ratio=1,
+    #         )
+    #     s._scenario_extraction_info = new_extraction_info
+    #     if scenario_model_path.is_file():
+    #         scenarios.append(s)
+
+
+    # Nuscenes only
+    from nuplan_extent.common.maps.nusc_map.nusc_map import NuscMap
+    from nuplan_extent.planning.scenario_builder.nuscenes_db.nuscenes_scenario import NuscScenario
+    from nuscenes.nuscenes import NuScenes
+    from nuscenes.can_bus.can_bus_api import NuScenesCanBus
+    from nuscenes.map_expansion.map_api import NuScenesMap
+
+
+    # split = 'v1.0-mini'
+    # load_dir = '/home/vad/nuscenes-converted-data'
+    # nusc =  NuScenes(version=split, dataroot=load_dir, verbose=True)
+    
+    # scenarios = []
+    # nusc_maps = {}
+    # from tqdm import tqdm
+    # scene_ids = [0,1,2,3,4,5,6,7,8,9]
+    # # scene_ids = [0]
+    # for id in tqdm(scene_ids):
+    #     nusc_scenario = nusc.scene[id]
+    #     scene_data = nusc.get('scene', nusc_scenario['token'])
+    #     scene_log = nusc.get('log', scene_data['log_token'])
+    #     nusc_can_bus = NuScenesCanBus(dataroot=load_dir)
+    #     map_name = scene_log['location']
+    #     if not map_name in nusc_maps:
+    #         map = NuScenesMap(dataroot=load_dir, map_name=map_name)
+    #         map_api = NuscMap(nuscenes_map_api=map, map_name=map_name)
+    #         nusc_maps[map_name] = map_api
+    #     s = NuscScenario(nusc=nusc, nusc_can_bus=nusc_can_bus, 
+    #                      nusc_map=nusc_maps[map_name],
+    #                      scene_id=id, renderer_path=os.path.join('mini', str(id).zfill(3)), interpolate_N=4)
+    #     scenarios.append(s)
+
+    split = 'trainval'
+    load_dir = '/mnt/nas26/siqi01.chai/nuscenes-dataset/'
+    nusc =  NuScenes(version='v1.0-{}'.format(split), dataroot=load_dir, verbose=True)
+    nusc_can_bus = NuScenesCanBus(dataroot=load_dir)
+    from nuscenes.utils import splits
+    # caching_split = splits.val
+    caching_split = splits.train
+
+    import json
+    with open('/home/hoplan/nusc_renderer_mapping.json', 'r') as file:
+        nusc_renderer_mapping = json.load(file)
+    scene_ids = []
+    for id, scene in enumerate(nusc.scene):
+        if not scene['name'] in caching_split:
+            continue
+        if not str(id) in nusc_renderer_mapping:
+            continue
+        renderer_name = nusc_renderer_mapping[str(id)]
+        render_base_path = '/mnt/nas26/siqi01.chai/models-drivestudio-nuscenes'
+        render = os.path.join(split, renderer_name)
+        if not os.path.exists(os.path.join(render_base_path, render, 'checkpoint_final.pth')):
+            continue
+        try:
+            _ = nusc_can_bus.get_messages(scene['name'], 'pose')
+        except:
+            continue
+        scene_ids.append((id, render))
+    print(scene_ids)
+    print('preparing to cache {} scenes'.format(len(scene_ids)))
+    
+    scenarios = []
+    nusc_maps = {}
+    from tqdm import tqdm
+    for (id, renderer_path) in tqdm(scene_ids):
+        nusc_scenario = nusc.scene[id]
+        scene_data = nusc.get('scene', nusc_scenario['token'])
+        scene_log = nusc.get('log', scene_data['log_token'])
+        nusc_can_bus = NuScenesCanBus(dataroot=load_dir)
+        map_name = scene_log['location']
+        if not map_name in nusc_maps:
+            map = NuScenesMap(dataroot=load_dir, map_name=map_name)
+            map_api = NuscMap(nuscenes_map_api=map, map_name=map_name)
+            nusc_maps[map_name] = map_api
+        s = NuscScenario(nusc=nusc, nusc_can_bus=nusc_can_bus, 
+                         nusc_map=nusc_maps[map_name],
+                         scene_id=id, renderer_path=renderer_path, interpolate_N=4)
+        scenarios.append(s)
 
     data_points = [{"scenario": scenario, "cfg": cfg} for scenario in scenarios]
     logger.info("Starting dataset caching of %s files...", str(len(data_points)))
 
+    # cache_results = cache_scenarios(data_points)
     cache_results = worker_map(worker, cache_scenarios, data_points)
 
     num_success = sum(result.successes for result in cache_results)

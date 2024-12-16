@@ -39,32 +39,32 @@ def compute_or_load_feature(
     """
     cache_path_available = cache_path is not None
 
-    if cache_path_available:
-        if versatile_cache:
-            feature_path = cache_path / scenario.log_name / scenario._lidarpc_tokens[iteration]
-        else:
-            if isinstance(scenario, CachedScenario):
-                if hasattr(scenario, "_lidarpc_tokens"):
-                    token = "_".join([str(iteration), scenario._lidarpc_tokens[iteration]])
-                else:
-                    token = ""
-            else:
-                if scenario.get_number_of_iterations() > 1:
-                    token = "_".join([str(iteration), scenario._lidarpc_tokens[iteration]])
-                else:
-                    token = ""
-            if hasattr(scenario, "cache_token"):
-                scenario_token = scenario.cache_token
-            else:
-                scenario_token = scenario.token
+    # if cache_path_available:
+    #     if versatile_cache:
+    #         feature_path = cache_path / scenario.log_name / scenario._lidarpc_tokens[iteration]
+    #     else:
+    #         if isinstance(scenario, CachedScenario):
+    #             if hasattr(scenario, "_lidarpc_tokens"):
+    #                 token = "_".join([str(iteration), scenario._lidarpc_tokens[iteration]])
+    #             else:
+    #                 token = ""
+    #         else:
+    #             if scenario.get_number_of_iterations() > 1:
+    #                 token = "_".join([str(iteration), scenario._lidarpc_tokens[iteration]])
+    #             else:
+    #                 token = ""
+    #         if hasattr(scenario, "cache_token"):
+    #             scenario_token = scenario.cache_token
+    #         else:
+    #             scenario_token = scenario.token
             
-            feature_path = cache_path / scenario.log_name / scenario.scenario_type / scenario_token / token
-        file_name = feature_path / builder.get_feature_unique_name()
-    else:
-        if scenario.get_number_of_iterations() > 1:
-            token = "_".join([str(iteration), scenario._lidarpc_tokens[iteration]])
-        else:
-            token = ""
+    #         feature_path = cache_path / scenario.log_name / scenario.scenario_type / scenario_token / token
+    #     file_name = feature_path / builder.get_feature_unique_name()
+    # else:
+    #     if scenario.get_number_of_iterations() > 1:
+    #         token = "_".join([str(iteration), scenario._lidarpc_tokens[iteration]])
+    #     else:
+    #         token = ""
     file_name = (
         cache_path / scenario.log_name / scenario.scenario_type / scenario.token / builder.get_feature_unique_name()
         if cache_path_available
